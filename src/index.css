@@ -1,0 +1,64 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Libre+Caslon+Display&family=Public+Sans:wght@400;500;600;700&display=swap');
+
+:root {
+  font-family: 'Public Sans', sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color: #10202c;
+  background:
+    radial-gradient(circle at top left, rgba(250, 230, 198, 0.8), transparent 42%),
+    radial-gradient(circle at bottom right, rgba(117, 165, 198, 0.24), transparent 28%),
+    linear-gradient(135deg, #efe5d1 0%, #e4d6bc 46%, #d7cab1 100%);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  --paper: rgba(252, 247, 236, 0.74);
+  --paper-strong: rgba(252, 247, 236, 0.92);
+  --ink: #0d2232;
+  --ink-muted: rgba(13, 34, 50, 0.68);
+  --line: rgba(13, 34, 50, 0.12);
+  --line-strong: rgba(13, 34, 50, 0.2);
+  --accent: #0f6d8f;
+  --accent-soft: rgba(15, 109, 143, 0.14);
+  --signal: #be6b2f;
+  --signal-soft: rgba(190, 107, 47, 0.16);
+  --danger: #8d3f36;
+  --success: #3f8051;
+  --shadow: 0 22px 60px rgba(28, 29, 32, 0.14);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-width: 320px;
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  color: var(--ink);
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button {
+  color: inherit;
+}
+
+input,
+textarea {
+  color: inherit;
+}
+
+a {
+  color: inherit;
+}
