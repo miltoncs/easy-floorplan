@@ -318,6 +318,31 @@ describe('workspace interactions', () => {
     expect(screen.queryByRole('combobox', { name: 'Measurement source' })).not.toBeInTheDocument()
   })
 
+  it('separates clustered inferred wall actions into distinct visual lanes', () => {
+    const draft = createSeedState()
+
+    renderEditor({ draft })
+
+    const svg = screen.getByLabelText('Interactive floorplan canvas')
+    mockCanvasRect(svg)
+    fireEvent(window, new Event('resize'))
+
+    const positions = screen
+      .getAllByTestId(/canvas-suggestion-actions-/)
+      .map((element) => readSuggestionActionPosition(element, 440, 360))
+
+    expect(positions.length).toBeGreaterThan(1)
+
+    positions.forEach((position, index) => {
+      positions.slice(index + 1).forEach((other) => {
+        const deltaX = Math.abs(position.x - other.x)
+        const deltaY = Math.abs(position.y - other.y)
+
+        expect(deltaX >= 56 || deltaY >= 112).toBe(true)
+      })
+    })
+  })
+
   it('keeps dismissed inferred wall previews hidden after draft recomputes and route changes', async () => {
     const user = userEvent.setup()
     const draft = createSeedState()
@@ -680,5 +705,16 @@ function getViewBoxCenter(element: HTMLElement) {
   return {
     x: x + width / 2,
     y: y + height / 2,
+  }
+}
+
+function readSuggestionActionPosition(element: HTMLElement, width: number, height: number) {
+  const style = element.getAttribute('style') ?? ''
+  const left = Number.parseFloat(style.match(/left:\s*([\d.]+)%/)?.[1] ?? '0')
+  const top = Number.parseFloat(style.match(/top:\s*([\d.]+)%/)?.[1] ?? '0')
+
+  return {
+    x: (left / 100) * width,
+    y: (top / 100) * height,
   }
 }
