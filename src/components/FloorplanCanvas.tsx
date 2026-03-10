@@ -328,9 +328,12 @@ export function FloorplanCanvas() {
   }, [placedAnnotations])
 
   useEffect(() => {
+    const availableSuggestionIds = new Set(shapeSuggestions.map((suggestion) => suggestion.id))
+
     setDismissedSuggestionIds((current) => {
-      const next = current.filter((id) => shapeSuggestions.some((suggestion) => suggestion.id === id))
-      return next.length === current.length ? current : next
+      const next = current.filter((id) => availableSuggestionIds.has(id))
+
+      return next.length === current.length && next.every((id, index) => id === current[index]) ? current : next
     })
   }, [shapeSuggestions])
 
