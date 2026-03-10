@@ -171,7 +171,8 @@ describe('workspace interactions', () => {
 
     const wallMenus = screen.getAllByTestId(/wall-menu-/)
     fireEvent.click(wallMenus[wallMenus.length - 1])
-    expect(screen.getByRole('combobox', { name: 'Measurement source' })).toHaveValue('inferred')
+    expect(screen.getByRole('dialog')).toHaveTextContent('Edit wall')
+    expect(screen.queryByRole('combobox', { name: 'Measurement source' })).not.toBeInTheDocument()
   })
 
   it('dismisses inferred wall previews from the canvas with the reject button', () => {
@@ -211,6 +212,19 @@ describe('workspace interactions', () => {
     await user.click(screen.getByRole('checkbox', { name: 'Angles' }))
 
     expect(screen.getByTestId(`corner-label-${firstCorner.id}`)).toBeInTheDocument()
+  })
+
+  it('shows an internal angle hover overlay at the corner junction', () => {
+    const draft = createSeedState()
+    const firstCorner = draft.structures[0].floors[0].rooms[0].segments[0]
+
+    renderEditor({ draft })
+
+    expect(screen.queryByTestId(`corner-hover-overlay-${firstCorner.id}`)).not.toBeInTheDocument()
+
+    fireEvent.mouseEnter(screen.getByTestId(`corner-hit-${firstCorner.id}`))
+
+    expect(screen.getByTestId(`corner-hover-overlay-${firstCorner.id}`)).toHaveTextContent('90°')
   })
 
   it('toggles canvas wall distance labels', async () => {

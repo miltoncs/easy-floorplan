@@ -119,7 +119,6 @@ export function roomToGeometry(room: Room): RoomGeometry {
       label: segment.label,
       length: segment.length,
       turn: segment.turn,
-      source: segment.source === 'inferred' ? 'inferred' : 'measured',
       heading,
       start: cursor,
       end: next,

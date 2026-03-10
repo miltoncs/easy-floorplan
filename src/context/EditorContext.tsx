@@ -591,7 +591,7 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
     return validation
   }
 
-  const updateWall = (ids: EntityIds, values: Pick<Room['segments'][number], 'label' | 'length' | 'notes' | 'source'>) => {
+  const updateWall = (ids: EntityIds, values: Pick<Room['segments'][number], 'label' | 'length' | 'notes'>) => {
     if (!ids.structureId || !ids.floorId || !ids.roomId || !ids.segmentId) {
       return {
         valid: false,
@@ -610,7 +610,6 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
       segment.label = values.label
       segment.length = values.length
       segment.notes = values.notes
-      segment.source = values.source
       return true
     })
 
@@ -624,7 +623,6 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
         segment.label = values.label
         segment.length = values.length
         segment.notes = values.notes
-        segment.source = values.source
       }
     }, {
       status: 'Wall measurements updated.',

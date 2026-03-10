@@ -8,7 +8,6 @@ import type {
   RoomSuggestion,
   Structure,
   SuggestionSegment,
-  WallSource,
 } from '../types'
 import {
   angleDelta,
@@ -43,7 +42,6 @@ export function createSegment(partial?: Partial<Room['segments'][number]>) {
     length: partial?.length ?? 10,
     turn: partial?.turn ?? 90,
     notes: partial?.notes ?? '',
-    source: normalizeWallSource(partial?.source),
   }
 }
 
@@ -101,7 +99,6 @@ export function createStructure(partial?: Partial<Structure>): Structure {
 }
 
 export function ensureSelections(state: DraftState): DraftState {
-  normalizeDraftWallSources(state)
   if (typeof state.showRoomFloorLabels !== 'boolean') {
     state.showRoomFloorLabels = true
   }
@@ -310,7 +307,6 @@ export function getRoomSuggestions(room: Room, floor: Floor) {
                 label: `${room.name} closure wall`,
                 length: round(closureDistance),
                 turn: round(turnBackToStart, 1),
-                source: 'inferred',
               },
             ],
             'closure',
@@ -336,13 +332,11 @@ export function getRoomSuggestions(room: Room, floor: Floor) {
                 label: `${room.name} forward leg`,
                 length: round(forwardDistance),
                 turn: orthogonalTurn,
-                source: 'inferred',
               },
               {
                 label: `${room.name} return leg`,
                 length: round(Math.abs(sideDistance)),
                 turn: round(angleDelta(secondHeading, room.startHeading), 1),
-                source: 'inferred',
               },
             ],
             'orthogonal',
@@ -370,13 +364,11 @@ export function getRoomSuggestions(room: Room, floor: Floor) {
             label: `${room.name} mirrored wall`,
             length: room.segments[0].length,
             turn: cornerTurn,
-            source: 'inferred',
           },
           {
             label: `${room.name} final wall`,
             length: room.segments[1].length,
             turn: cornerTurn,
-            source: 'inferred',
           },
         ],
         'rectangle',
@@ -602,22 +594,6 @@ export function cloneImportedStructure(snapshot: Structure): Structure {
   })
 }
 
-export function normalizeWallSource(source?: WallSource): WallSource {
-  return source === 'inferred' ? 'inferred' : 'measured'
-}
-
-export function normalizeDraftWallSources(draft: DraftState) {
-  draft.structures.forEach((structure) => {
-    structure.floors.forEach((floor) => {
-      floor.rooms.forEach((room) => {
-        room.segments = room.segments.map((segment) => createSegment(segment))
-      })
-    })
-  })
-
-  return draft
-}
-
 export function loadDraftState() {
   const saved = window.localStorage.getItem(STORAGE_KEY)
 
@@ -627,7 +603,7 @@ export function loadDraftState() {
 
   try {
     const parsed = JSON.parse(saved) as DraftState
-    return ensureSelections(normalizeDraftWallSources(parsed))
+    return ensureSelections(parsed)
   } catch {
     return null
   }

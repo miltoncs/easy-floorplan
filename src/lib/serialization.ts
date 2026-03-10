@@ -5,7 +5,7 @@ import type {
   StructureExportEnvelope,
   WorkspaceExportEnvelope,
 } from '../types'
-import { createStructure, nowIso, normalizeDraftWallSources } from './blueprint'
+import { createStructure, nowIso } from './blueprint'
 import { validateName } from './nameValidation'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -85,7 +85,6 @@ export function normalizeImportedJson(value: unknown): ImportPayload {
   if (looksLikeExportEnvelope(value)) {
     if (value.kind === 'workspace' && isDraftStateLike(value.payload)) {
       normalizeDraftDisplayOptions(value.payload)
-      normalizeDraftWallSources(value.payload)
       validateDraftNames(value.payload)
       return {
         kind: 'workspace',
@@ -105,7 +104,6 @@ export function normalizeImportedJson(value: unknown): ImportPayload {
 
   if (isDraftStateLike(value)) {
     normalizeDraftDisplayOptions(value)
-    normalizeDraftWallSources(value)
     validateDraftNames(value)
     return {
       kind: 'workspace',

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
-import type { CornerGeometry, WallSource } from '../types'
+import type { CornerGeometry } from '../types'
 import {
   findFloorById,
   findFurnitureById,
@@ -61,7 +61,7 @@ export function EditorDialogs() {
     return (
       <DialogFrame
         title="Edit wall"
-        subtitle="Adjust the wall label, distance, source, and notes. Corner angles are edited separately."
+        subtitle="Adjust the wall label, distance, and notes. Corner angles are edited separately."
         onClose={actions.closeDialog}
       >
         <WallDialogBody
@@ -292,14 +292,12 @@ function WallDialogBody({
     label: string
     length: number
     notes: string
-    source: WallSource
   }
   onCancel: () => void
   onSubmit: (values: {
     label: string
     length: number
     notes: string
-    source: WallSource
   }) => {
     valid: boolean
     error: string | null
@@ -308,7 +306,6 @@ function WallDialogBody({
   const [label, setLabel] = useState(initialValue.label)
   const [length, setLength] = useState(String(initialValue.length))
   const [notes, setNotes] = useState(initialValue.notes)
-  const [source, setSource] = useState<WallSource>(initialValue.source)
   const [error, setError] = useState<string | null>(null)
   const lengthInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -333,7 +330,6 @@ function WallDialogBody({
           label,
           length: parsedLength,
           notes,
-          source,
         })
 
         if (!result.valid) {
@@ -380,20 +376,6 @@ function WallDialogBody({
             setError(null)
           }}
         />
-      </label>
-      <label>
-        <span>Measurement source</span>
-        <select
-          className="text-input"
-          value={source}
-          onChange={(event) => {
-            setSource(event.target.value === 'inferred' ? 'inferred' : 'measured')
-            setError(null)
-          }}
-        >
-          <option value="measured">Measured on site</option>
-          <option value="inferred">Inferred from geometry</option>
-        </select>
       </label>
       {error ? <div className="dialog-meta"><span className="validation-error">{error}</span></div> : null}
       <div className="dialog-actions">

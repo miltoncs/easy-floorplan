@@ -21,7 +21,7 @@ import {
   pointsToPath,
   roomToGeometry,
 } from '../lib/geometry'
-import type { CanvasTarget, Floor, Point, Room, RoomSuggestion, SuggestionSegment, WallSource } from '../types'
+import type { CanvasTarget, Floor, Point, Room, RoomSuggestion, SuggestionSegment } from '../types'
 
 type DragState =
   | {
@@ -108,7 +108,6 @@ type CanvasAnnotation = {
   kind: AnnotationKind
   text: string
   target: CanvasTarget
-  source?: WallSource
   anchor: ScreenPoint
   widthPx: number
   heightPx: number
@@ -121,6 +120,13 @@ type PlacedCanvasAnnotation = CanvasAnnotation & {
   rect: CanvasRect
   position: ScreenPoint
   candidateIndex: number
+}
+
+type HoverCornerOverlay = {
+  target: Extract<CanvasTarget, { kind: 'corner' }>
+  point: ScreenPoint
+  labelPoint: ScreenPoint
+  text: string
 }
 
 type SelectableCanvasTarget = {
@@ -212,6 +218,15 @@ export function FloorplanCanvas() {
     selectionTargets: ui.selectionTargets,
     editingWallSegmentId: inlineWallEditor?.segmentId ?? null,
     previousCandidateIndices: annotationPlacementRef.current,
+  })
+  const hoveredCornerOverlay = getHoveredCornerOverlay({
+    activeStructureId: activeStructure?.id,
+    activeFloorId: activeFloor?.id ?? draft.activeFloorId,
+    selectedRoom,
+    selectedRoomGeometry,
+    hoveredTarget: ui.hoveredTarget,
+    viewBox,
+    canvasMetrics,
   })
   const selectableTargets = buildSelectableCanvasTargets({
     activeStructureId: activeStructure?.id,
@@ -313,7 +328,10 @@ export function FloorplanCanvas() {
   }, [placedAnnotations])
 
   useEffect(() => {
-    setDismissedSuggestionIds((current) => current.filter((id) => shapeSuggestions.some((suggestion) => suggestion.id === id)))
+    setDismissedSuggestionIds((current) => {
+      const next = current.filter((id) => shapeSuggestions.some((suggestion) => suggestion.id === id))
+      return next.length === current.length ? current : next
+    })
   }, [shapeSuggestions])
 
   return (
@@ -629,6 +647,34 @@ export function FloorplanCanvas() {
           : null}
 
         {selectedRoom && selectedRoomGeometry && activeStructure && activeFloor
+          ? getRoomCorners(selectedRoom).map((corner) => {
+              const target: CanvasTarget = {
+                kind: 'corner',
+                structureId: activeStructure.id,
+                floorId: activeFloor.id,
+                roomId: selectedRoom.id,
+                segmentId: corner.segmentId,
+              }
+              const hovered = matchesTarget(ui.hoveredTarget, target)
+
+              return (
+                <circle
+                  key={`${corner.segmentId}-hit`}
+                  className={hovered ? 'corner-hit hovered' : 'corner-hit'}
+                  cx={corner.point.x}
+                  cy={-corner.point.y}
+                  data-testid={`corner-hit-${corner.segmentId}`}
+                  r={0.6}
+                  onClick={() => handleCornerClick(target)}
+                  onContextMenu={(event) => openContextMenu(event, target)}
+                  onMouseEnter={() => actions.setHoveredTarget(target)}
+                  onMouseLeave={() => actions.setHoveredTarget(null)}
+                />
+              )
+            })
+          : null}
+
+        {selectedRoom && selectedRoomGeometry && activeStructure && activeFloor
           ? selectedRoomGeometry.segments.map((segment) => (
               <g
                 key={`${segment.id}-anchor`}
@@ -659,6 +705,30 @@ export function FloorplanCanvas() {
             height: `${selectionBox.maxY - selectionBox.minY}px`,
           }}
         />
+      ) : null}
+
+      {hoveredCornerOverlay ? (
+        <div className="canvas-hover-layer" data-testid={`corner-hover-overlay-${hoveredCornerOverlay.target.segmentId}`}>
+          <div
+            className="canvas-corner-hover-marker"
+            style={{
+              left: `${hoveredCornerOverlay.point.x}px`,
+              top: `${hoveredCornerOverlay.point.y}px`,
+            }}
+          >
+            <span />
+            <span />
+          </div>
+          <div
+            className="canvas-corner-hover-label"
+            style={{
+              left: `${hoveredCornerOverlay.labelPoint.x}px`,
+              top: `${hoveredCornerOverlay.labelPoint.y}px`,
+            }}
+          >
+            {hoveredCornerOverlay.text}
+          </div>
+        </div>
       ) : null}
 
       {activeStructure ? (
@@ -762,12 +832,12 @@ export function FloorplanCanvas() {
 
       <div aria-label="Canvas legend" className="canvas-key">
         <div className="canvas-key__item">
-          <span className="canvas-key__line canvas-key__line--measured" />
-          <span>Measured wall</span>
+          <span className="canvas-key__line" />
+          <span>Wall</span>
         </div>
         <div className="canvas-key__item">
-          <span className="canvas-key__line canvas-key__line--inferred" />
-          <span>Inferred wall</span>
+          <span className="canvas-key__line canvas-key__line--preview" />
+          <span>Suggested wall preview</span>
         </div>
         <div className="canvas-key__item" data-testid="canvas-grid-scale">
           <span className="canvas-key__square" />
@@ -790,7 +860,6 @@ export function FloorplanCanvas() {
             const className = [
               'canvas-annotation',
               `canvas-annotation--${annotation.kind}`,
-              annotation.kind === 'wall' ? `canvas-annotation--wall-${annotation.source === 'inferred' ? 'inferred' : 'measured'}` : '',
               hovered ? 'hovered' : '',
               active || multiSelected ? 'active' : '',
             ]
@@ -859,7 +928,11 @@ export function FloorplanCanvas() {
                         onClick={() => openFullWallEditor(wallTarget)}
                         type="button"
                       >
-                        ...
+                        <span className="canvas-wall-chip__menu-icon" aria-hidden="true">
+                          <span />
+                          <span />
+                          <span />
+                        </span>
                       </button>
                     </div>
                   )
@@ -1091,7 +1164,6 @@ export function FloorplanCanvas() {
         label: segment.label,
         length: nextLength,
         notes: segment.notes,
-        source: segment.source,
       },
     )
 
@@ -1306,7 +1378,6 @@ export function FloorplanCanvas() {
             key={segment.id}
             className={[
               'room-segment',
-              `room-segment--${segment.source}`,
               hovered ? 'hovered' : '',
               active || multiSelected ? 'active' : '',
             ]
@@ -1967,6 +2038,22 @@ function buildCornerAnnotationOffsets({
   ]
 }
 
+function getCornerHoverOffset({
+  corner,
+  incomingStart,
+  outgoingEnd,
+}: {
+  corner: ScreenPoint
+  incomingStart: ScreenPoint
+  outgoingEnd: ScreenPoint | null
+}) {
+  return buildCornerAnnotationOffsets({
+    corner,
+    incomingStart,
+    outgoingEnd,
+  })[0] ?? { x: 0, y: -30 }
+}
+
 function buildCanvasAnnotations({
   canvasMetrics,
   viewBox,
@@ -2152,7 +2239,6 @@ function buildCanvasAnnotations({
         kind: 'wall',
         text: formatFeet(segment.length),
         target: wallTarget,
-        source: segment.source,
         anchor: midpointScreen,
         widthPx: wallSize.widthPx,
         heightPx: wallSize.heightPx,
@@ -2206,6 +2292,65 @@ function buildCanvasAnnotations({
     minY: 10,
     maxY: canvasMetrics.heightPx - 10,
   }, previousCandidateIndices)
+}
+
+function getHoveredCornerOverlay({
+  activeStructureId,
+  activeFloorId,
+  selectedRoom,
+  selectedRoomGeometry,
+  hoveredTarget,
+  viewBox,
+  canvasMetrics,
+}: {
+  activeStructureId?: string
+  activeFloorId: string
+  selectedRoom: Room | null
+  selectedRoomGeometry: ReturnType<typeof roomToGeometry> | null
+  hoveredTarget: CanvasTarget | null
+  viewBox: { x: number; y: number; width: number; height: number }
+  canvasMetrics: CanvasMetrics
+}): HoverCornerOverlay | null {
+  if (
+    !activeStructureId ||
+    !selectedRoom ||
+    !selectedRoomGeometry ||
+    !hoveredTarget ||
+    hoveredTarget.kind !== 'corner' ||
+    hoveredTarget.floorId !== activeFloorId ||
+    hoveredTarget.roomId !== selectedRoom.id
+  ) {
+    return null
+  }
+
+  const corners = getRoomCorners(selectedRoom)
+  const cornerIndex = corners.findIndex((corner) => corner.segmentId === hoveredTarget.segmentId)
+
+  if (cornerIndex < 0) {
+    return null
+  }
+
+  const corner = corners[cornerIndex]
+  const previousSegment = selectedRoomGeometry.segments[cornerIndex]
+  const nextSegment = corner.isExit
+    ? null
+    : selectedRoomGeometry.segments[cornerIndex + 1] ?? (selectedRoomGeometry.closed ? selectedRoomGeometry.segments[0] : null)
+  const point = worldToScreenPoint(corner.point, viewBox, canvasMetrics)
+  const offset = getCornerHoverOffset({
+    corner: point,
+    incomingStart: worldToScreenPoint(previousSegment.start, viewBox, canvasMetrics),
+    outgoingEnd: nextSegment ? worldToScreenPoint(nextSegment.end, viewBox, canvasMetrics) : null,
+  })
+
+  return {
+    target: hoveredTarget,
+    point,
+    labelPoint: {
+      x: point.x + offset.x,
+      y: point.y + offset.y,
+    },
+    text: formatCornerAngleBadge(corner.turn),
+  }
 }
 
 function placeCanvasAnnotations(

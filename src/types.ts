@@ -7,15 +7,12 @@ export type Point = {
   y: number
 }
 
-export type WallSource = 'measured' | 'inferred'
-
 export type OutlineSegment = {
   id: string
   label: string
   length: number
   turn: number
   notes: string
-  source: WallSource
 }
 
 export type Furniture = {
@@ -180,7 +177,6 @@ export type SegmentGeometry = {
   label: string
   length: number
   turn: number
-  source: WallSource
   heading: number
   start: Point
   end: Point
@@ -213,7 +209,7 @@ export type CornerGeometry = {
   isExit: boolean
 }
 
-export type SuggestionSegment = Pick<OutlineSegment, 'label' | 'length' | 'turn' | 'source'>
+export type SuggestionSegment = Pick<OutlineSegment, 'label' | 'length' | 'turn'>
 
 export type RoomSuggestion = {
   id: string

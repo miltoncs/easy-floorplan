@@ -261,43 +261,31 @@ function buildSurveySummary(
   geometry: RoomGeometry,
   primarySuggestion: RoomSuggestion | null,
 ) {
-  const measuredSegments = room.segments.filter((segment) => segment.source !== 'inferred')
-  const inferredSegments = room.segments.filter((segment) => segment.source === 'inferred')
-  const measuredRun = measuredSegments.reduce((sum, segment) => sum + segment.length, 0)
-  const inferredRun = inferredSegments.reduce((sum, segment) => sum + segment.length, 0)
+  const tracedRun = room.segments.reduce((sum, segment) => sum + segment.length, 0)
   const closureRun = getSuggestionLength(primarySuggestion)
   const hasClosurePreview = Number.isFinite(closureRun) && closureRun > 0
-  const finishedPerimeter = geometry.closed
-    ? measuredRun + inferredRun
-    : measuredRun + inferredRun + (hasClosurePreview ? closureRun : 0)
-  const measuredShare = finishedPerimeter > 0 ? Math.round((measuredRun / finishedPerimeter) * 100) : 0
+  const projectedPerimeter = geometry.closed ? tracedRun : tracedRun + (hasClosurePreview ? closureRun : 0)
 
   if (geometry.closed) {
     return {
       closed: true,
-      statusTitle: inferredSegments.length > 0 ? 'Closed plan with editable inferred walls' : 'Closed room from direct measurements',
-      statusDetail:
-        inferredSegments.length > 0
-          ? 'Solid walls came from your measurements. Dashed walls were inferred and can be edited or reclassified at any time.'
-          : 'Every wall in this room is marked as directly measured on site.',
+      statusTitle: 'Closed room outline',
+      statusDetail: 'The outline is complete. Edit any wall or corner directly on the canvas to refine the finished plan.',
       cards: [
         {
-          label: 'Measured on site',
-          value: formatFeet(measuredRun),
-          detail: `${measuredSegments.length} direct wall${measuredSegments.length === 1 ? '' : 's'}`,
+          label: 'Traced perimeter',
+          value: formatFeet(tracedRun),
+          detail: `${room.segments.length} wall${room.segments.length === 1 ? '' : 's'} in the finished outline`,
         },
         {
-          label: 'Inferred in plan',
-          value: formatFeet(inferredRun),
-          detail:
-            inferredSegments.length > 0
-              ? `${inferredSegments.length} dashed wall${inferredSegments.length === 1 ? '' : 's'}`
-              : 'No inferred walls',
+          label: 'Enclosed area',
+          value: geometry.measuredArea ? `${geometry.measuredArea.toFixed(1)} sq ft` : 'Pending',
+          detail: geometry.measuredArea ? 'Calculated from the closed shape on the canvas.' : 'Close the shape to compute area.',
         },
         {
-          label: 'Measured share',
-          value: `${measuredShare}%`,
-          detail: 'of the finished perimeter came from direct measurements',
+          label: 'Next step',
+          value: 'Tweak onscreen',
+          detail: 'Click any wall distance or corner angle to adjust the finished drawing directly.',
         },
       ],
     }
@@ -307,28 +295,26 @@ function buildSurveySummary(
     closed: false,
     statusTitle: hasClosurePreview ? 'Ready for a geometry-based closure' : 'Outline still open',
     statusDetail: hasClosurePreview
-      ? `${primarySuggestion?.title ?? 'A closure'} is previewed on the canvas as dashed walls so you can decide before adding more measurements.`
+      ? `${primarySuggestion?.title ?? 'A closure'} is previewed on the canvas as dashed walls until you accept it.`
       : 'Keep tracing from an end anchor, or click an existing wall to refine the dimensions you already have.',
     cards: [
       {
-        label: 'Measured on site',
-        value: formatFeet(measuredRun),
-        detail: `${measuredSegments.length} direct wall${measuredSegments.length === 1 ? '' : 's'}`,
+        label: 'Traced perimeter',
+        value: formatFeet(tracedRun),
+        detail: `${room.segments.length} wall${room.segments.length === 1 ? '' : 's'} traced so far`,
       },
       {
-        label: hasClosurePreview ? 'Quickest closure' : 'Inferred in plan',
-        value: hasClosurePreview ? `~${formatFeet(closureRun)}` : formatFeet(inferredRun),
+        label: hasClosurePreview ? 'Quickest closure' : 'Projected perimeter',
+        value: hasClosurePreview ? `~${formatFeet(closureRun)}` : formatFeet(projectedPerimeter),
         detail: hasClosurePreview
           ? primarySuggestion?.detail ?? 'Geometry can close the outline from your current measurements.'
-          : inferredSegments.length > 0
-            ? `${inferredSegments.length} dashed wall${inferredSegments.length === 1 ? '' : 's'}`
-            : 'No inferred walls yet',
+          : 'Continue tracing until the room closes, or accept a previewed closure when it matches the space.',
       },
       {
-        label: hasClosurePreview ? 'Measured share' : 'Next step',
-        value: hasClosurePreview ? `${measuredShare}%` : 'Add wall',
+        label: 'Next step',
+        value: hasClosurePreview ? 'Review preview' : 'Add wall',
         detail: hasClosurePreview
-          ? 'of the projected finished perimeter is already measured'
+          ? 'Accept the dashed preview if it matches the room, or keep measuring.'
           : 'Use a wall-end anchor to keep tracing the room',
       },
     ],

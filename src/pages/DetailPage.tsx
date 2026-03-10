@@ -246,14 +246,12 @@ export function DetailPage() {
                       <div className="measurement-head measurement-head--walls">
                         <span>Wall</span>
                         <span>Length</span>
-                        <span>Source</span>
                         <span />
                       </div>
                       {selectedRoom.segments.map((segment, index) => (
                         <div className="measurement-row measurement-row--walls" key={segment.id}>
                           <span className="row-label">{segment.label || `Wall ${index + 1}`}</span>
                           <span>{segment.length.toFixed(1)} ft</span>
-                          <span>{segment.source === 'inferred' ? 'Inferred' : 'Measured'}</span>
                           <div className="row-actions">
                             <button
                               className="ghost-button small"
