@@ -94,7 +94,7 @@ describe('workspace interactions', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 
     const wallCount = document.querySelectorAll('[data-testid^="wall-hit-"]').length
-    expect(screen.queryByTestId(`anchor-${room.segments[0].id}`)).not.toBeInTheDocument()
+    expect(screen.getByTestId(`anchor-start-${room.segments[0].id}`)).toBeInTheDocument()
     expect(screen.getByTestId(`anchor-${openEndWall.id}`)).toBeInTheDocument()
     fireEvent.click(screen.getByTestId(`anchor-${openEndWall.id}`))
     expect(screen.getByRole('dialog')).toHaveTextContent('Edit wall')
@@ -104,6 +104,7 @@ describe('workspace interactions', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Close' }))
     fireEvent.click(screen.getByRole('button', { name: /^Furniture$/ }))
+    expect(screen.queryByTestId(`anchor-start-${room.segments[0].id}`)).not.toBeInTheDocument()
     expect(screen.queryByTestId(`anchor-${openEndWall.id}`)).not.toBeInTheDocument()
 
     const furnitureRect = screen.getByTestId(`furniture-${furniture.id}`)
@@ -132,6 +133,7 @@ describe('workspace interactions', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /^Stacked$/ }))
+    expect(screen.queryByTestId(`anchor-start-${room.segments[0].id}`)).not.toBeInTheDocument()
     expect(screen.queryByTestId(`anchor-${openEndWall.id}`)).not.toBeInTheDocument()
   })
 
@@ -239,6 +241,34 @@ describe('workspace interactions', () => {
     const rightZoomCenter = getViewBoxCenter(svg)
     expect(rightZoomCenter.x).toBeGreaterThan(initialCenter.x)
     expect(rightZoomCenter.x).toBeLessThan(initialCenter.x + 2)
+  })
+
+  it('adds a wall from the start-side open joint of a lone wall', async () => {
+    const draft = createSeedState()
+    const room = createRoom({
+      name: 'Closet',
+      anchor: { x: 0, y: 0 },
+      startHeading: 0,
+      segments: [createSegment({ id: 'solo-wall', label: 'Solo wall', length: 8, turn: 90 })],
+      furniture: [],
+    })
+
+    draft.structures[0].floors[0].rooms = [room]
+    draft.selectedRoomId = room.id
+    draft.selectedFurnitureId = null
+
+    renderEditor({ draft })
+
+    expect(screen.getByTestId('anchor-start-solo-wall')).toBeInTheDocument()
+    expect(screen.getByTestId('anchor-solo-wall')).toBeInTheDocument()
+
+    const wallCount = document.querySelectorAll('[data-testid^="wall-hit-"]').length
+    fireEvent.click(screen.getByTestId('anchor-start-solo-wall'))
+
+    expect(screen.getByRole('dialog')).toHaveTextContent('Edit wall')
+    await waitFor(() =>
+      expect(document.querySelectorAll('[data-testid^="wall-hit-"]').length).toBe(wallCount + 1),
+    )
   })
 
   it('edits furniture dimensions using feet-based inputs', async () => {

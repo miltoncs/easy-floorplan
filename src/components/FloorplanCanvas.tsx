@@ -246,11 +246,6 @@ export function FloorplanCanvas() {
     canvasMetrics,
     showFurniture: draft.editorMode === 'furniture',
   })
-  const anchorableSegmentIds =
-    draft.editorMode === 'rooms' && selectedRoom
-      ? new Set(getRoomCorners(selectedRoom).filter((corner) => corner.isExit).map((corner) => corner.segmentId))
-      : null
-
   const canvasTarget: CanvasTarget = {
     kind: 'canvas',
     structureId: activeStructure?.id,
@@ -294,8 +289,9 @@ export function FloorplanCanvas() {
       }
     }
 
-    if (wheelGestureRef.current?.timeoutId !== null) {
-      window.clearTimeout(wheelGestureRef.current.timeoutId)
+    const pendingTimeoutId = wheelGestureRef.current?.timeoutId
+    if (pendingTimeoutId !== null && pendingTimeoutId !== undefined) {
+      window.clearTimeout(pendingTimeoutId)
     }
 
     const anchor = {
@@ -729,23 +725,65 @@ export function FloorplanCanvas() {
             })
           : null}
 
-        {selectedRoomGeometry && activeStructure && activeFloor && anchorableSegmentIds
-          ? selectedRoomGeometry.segments.filter((segment) => anchorableSegmentIds.has(segment.id)).map((segment) => (
-              <g
-                key={`${segment.id}-anchor`}
-                className="anchor-action"
-                data-testid={`anchor-${segment.id}`}
-                transform={`translate(${segment.end.x} ${-segment.end.y})`}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  actions.addWallFromAnchor(activeStructure.id, activeFloor.id, selectedRoom.id, segment.id)
-                }}
-              >
-                <circle r={0.34} />
-                <line x1={-0.14} x2={0.14} y1={0} y2={0} />
-                <line x1={0} x2={0} y1={-0.14} y2={0.14} />
-              </g>
-            ))
+        {draft.editorMode === 'rooms' && selectedRoom && selectedRoomGeometry && activeStructure && activeFloor && !selectedRoomGeometry.closed
+          ? [
+              selectedRoomGeometry.segments[0]
+                ? {
+                    key: `${selectedRoomGeometry.segments[0].id}-anchor-start`,
+                    testId: `anchor-start-${selectedRoomGeometry.segments[0].id}`,
+                    point: selectedRoomGeometry.segments[0].start,
+                    onClick: (event: ReactMouseEvent<SVGGElement>) => {
+                      event.stopPropagation()
+                      actions.addWallFromAnchor(
+                        activeStructure.id,
+                        activeFloor.id,
+                        selectedRoom.id,
+                        selectedRoomGeometry.segments[0].id,
+                        'before',
+                      )
+                    },
+                  }
+                : null,
+              selectedRoomGeometry.segments[selectedRoomGeometry.segments.length - 1]
+                ? {
+                    key: `${selectedRoomGeometry.segments[selectedRoomGeometry.segments.length - 1].id}-anchor-end`,
+                    testId: `anchor-${selectedRoomGeometry.segments[selectedRoomGeometry.segments.length - 1].id}`,
+                    point: selectedRoomGeometry.segments[selectedRoomGeometry.segments.length - 1].end,
+                    onClick: (event: ReactMouseEvent<SVGGElement>) => {
+                      event.stopPropagation()
+                      actions.addWallFromAnchor(
+                        activeStructure.id,
+                        activeFloor.id,
+                        selectedRoom.id,
+                        selectedRoomGeometry.segments[selectedRoomGeometry.segments.length - 1].id,
+                      )
+                    },
+                  }
+                : null,
+            ]
+              .filter(
+                (
+                  anchor,
+                ): anchor is {
+                  key: string
+                  testId: string
+                  point: Point
+                  onClick: (event: ReactMouseEvent<SVGGElement>) => void
+                } => anchor !== null,
+              )
+              .map((anchor) => (
+                <g
+                  key={anchor.key}
+                  className="anchor-action"
+                  data-testid={anchor.testId}
+                  transform={`translate(${anchor.point.x} ${-anchor.point.y})`}
+                  onClick={anchor.onClick}
+                >
+                  <circle r={0.34} />
+                  <line x1={-0.14} x2={0.14} y1={0} y2={0} />
+                  <line x1={0} x2={0} y1={-0.14} y2={0.14} />
+                </g>
+              ))
           : null}
       </svg>
 

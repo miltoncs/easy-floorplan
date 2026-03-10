@@ -35,7 +35,7 @@ import {
   selectTargetInDraft,
   touchStructure,
 } from '../lib/blueprint'
-import { clamp, roomToGeometry, validateRoomWalls } from '../lib/geometry'
+import { addPolar, clamp, normalizeAngle, roomToGeometry, validateRoomWalls } from '../lib/geometry'
 import { validateName } from '../lib/nameValidation'
 import {
   createStructureExportEnvelope,
@@ -355,6 +355,8 @@ type EditorContextValue = ReturnType<typeof useCreateEditorContextValue>
 
 const EditorContext = createContext<EditorContextValue | null>(null)
 
+type WallAnchorSide = 'before' | 'after'
+
 function useCreateEditorContextValue(initialDraft?: DraftState) {
   const [state, dispatch] = useReducer(editorReducer, initialDraft, createInitialState)
   const [dismissedSuggestionIds, setDismissedSuggestionIds] = useState<string[]>([])
@@ -517,6 +519,31 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
 
   const selectFurniture = (structureId: string, floorId: string, roomId: string, furnitureId: string) =>
     selectTarget({ kind: 'furniture', structureId, floorId, roomId, furnitureId })
+
+  const insertWallAtAnchor = (
+    room: Room,
+    segmentId: string,
+    side: WallAnchorSide,
+    segment: Room['segments'][number],
+  ) => {
+    const segmentIndex = room.segments.findIndex((item) => item.id === segmentId)
+    if (segmentIndex < 0) {
+      return false
+    }
+
+    if (side === 'before') {
+      if (segmentIndex !== 0) {
+        return false
+      }
+
+      room.anchor = addPolar(room.anchor, segment.length, normalizeAngle(room.startHeading + 180))
+      room.segments.unshift(segment)
+      return true
+    }
+
+    room.segments.splice(segmentIndex + 1, 0, segment)
+    return true
+  }
 
   const openRenameDialog = (entityKind: NamedEntityKind, ids: EntityIds) =>
     dispatch({
@@ -741,18 +768,19 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
     })
   }
 
-  const addWallFromAnchor = (structureId: string, floorId: string, roomId: string, segmentId: string) => {
+  const addWallFromAnchor = (
+    structureId: string,
+    floorId: string,
+    roomId: string,
+    segmentId: string,
+    side: WallAnchorSide = 'after',
+  ) => {
     const segment = createSegment({
       label: 'Anchored wall',
+      turn: side === 'before' ? 0 : undefined,
     })
     const validation = validateProspectiveRoom(state.draft, structureId, floorId, roomId, (room) => {
-      const segmentIndex = room.segments.findIndex((item) => item.id === segmentId)
-      if (segmentIndex < 0) {
-        return false
-      }
-
-      room.segments.splice(segmentIndex + 1, 0, segment)
-      return true
+      return insertWallAtAnchor(room, segmentId, side, segment)
     })
 
     if (!validation.valid) {
@@ -769,12 +797,9 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
             return
           }
 
-          const segmentIndex = room.segments.findIndex((item) => item.id === segmentId)
-          if (segmentIndex < 0) {
+          if (!insertWallAtAnchor(room, segmentId, side, segment)) {
             return
           }
-
-          room.segments.splice(segmentIndex + 1, 0, segment)
           draft.activeStructureId = structureId
           draft.activeFloorId = floorId
           draft.selectedRoomId = roomId

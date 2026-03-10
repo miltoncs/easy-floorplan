@@ -302,7 +302,7 @@ function buildSurveySummary(
     statusTitle: hasClosurePreview ? 'Ready for a geometry-based closure' : 'Outline still open',
     statusDetail: hasClosurePreview
       ? `${primarySuggestion?.title ?? 'A closure'} is previewed on the canvas as dashed walls until you accept it.`
-      : 'Keep tracing from an end anchor, or click an existing wall to refine the dimensions you already have.',
+      : 'Keep tracing from any open-joint anchor, or click an existing wall to refine the dimensions you already have.',
     cards: [
       {
         label: 'Traced perimeter',
@@ -321,7 +321,7 @@ function buildSurveySummary(
         value: hasClosurePreview ? 'Review preview' : 'Add wall',
         detail: hasClosurePreview
           ? 'Accept the dashed preview if it matches the room, or keep measuring.'
-          : 'Use a wall-end anchor to keep tracing the room',
+          : 'Use an open-joint anchor to keep tracing the room',
       },
     ],
   }
