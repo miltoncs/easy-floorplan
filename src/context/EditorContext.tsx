@@ -6,6 +6,7 @@ import {
   useEffect,
   useMemo,
   useReducer,
+  useState,
   type PropsWithChildren,
 } from 'react'
 import { createSeedState } from '../data/seed'
@@ -356,6 +357,7 @@ const EditorContext = createContext<EditorContextValue | null>(null)
 
 function useCreateEditorContextValue(initialDraft?: DraftState) {
   const [state, dispatch] = useReducer(editorReducer, initialDraft, createInitialState)
+  const [dismissedSuggestionIds, setDismissedSuggestionIds] = useState<string[]>([])
 
   useEffect(() => {
     saveDraftState(state.draft)
@@ -402,9 +404,14 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
     () => (selectedRoom ? roomToGeometry(selectedRoom) : null),
     [selectedRoom],
   )
-  const roomSuggestions = useMemo(
+  const rawRoomSuggestions = useMemo(
     () => (selectedRoom && activeFloor ? getRoomSuggestions(selectedRoom, activeFloor) : []),
     [activeFloor, selectedRoom],
+  )
+  const dismissedSuggestionIdSet = useMemo(() => new Set(dismissedSuggestionIds), [dismissedSuggestionIds])
+  const roomSuggestions = useMemo(
+    () => rawRoomSuggestions.filter((suggestion) => !dismissedSuggestionIdSet.has(suggestion.id)),
+    [dismissedSuggestionIdSet, rawRoomSuggestions],
   )
   const visibleFloors = useMemo(
     () =>
@@ -1090,6 +1097,10 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
       }, {
         status: 'Wall chain cleared.',
       }),
+    dismissSuggestion: (suggestionId: string) =>
+      setDismissedSuggestionIds((current) =>
+        current.includes(suggestionId) ? current : [...current, suggestionId],
+      ),
     applySuggestion: (suggestion: RoomSuggestion) => {
       const room = findSelectedRoom(state.draft)
       if (!room || !activeStructure || !activeFloor) {

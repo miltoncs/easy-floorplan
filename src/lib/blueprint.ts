@@ -273,13 +273,59 @@ function buildClosureSegment(
   kind: RoomSuggestion['kind'],
 ) {
   return {
-    id: makeId('suggest'),
+    id: createRoomSuggestionId({
+      roomId: room.id,
+      kind,
+      segmentsToAdd,
+    }),
     kind,
     roomId: room.id,
     title,
     detail,
     segmentsToAdd,
   } satisfies RoomSuggestion
+}
+
+function createRoomSuggestionId({
+  roomId,
+  kind,
+  relatedRoomId,
+  gapFeet,
+  overlapFeet,
+  segmentsToAdd,
+}: {
+  roomId: string
+  kind: RoomSuggestion['kind']
+  relatedRoomId?: string
+  gapFeet?: number
+  overlapFeet?: number
+  segmentsToAdd?: SuggestionSegment[]
+}) {
+  const signature = JSON.stringify({
+    roomId,
+    kind,
+    relatedRoomId: relatedRoomId ?? null,
+    gapFeet: typeof gapFeet === 'number' ? round(gapFeet, 3) : null,
+    overlapFeet: typeof overlapFeet === 'number' ? round(overlapFeet, 3) : null,
+    segments:
+      segmentsToAdd?.map((segment) => ({
+        length: round(segment.length, 3),
+        turn: round(segment.turn, 3),
+      })) ?? [],
+  })
+
+  return `suggest-${kind}-${hashSuggestionSignature(signature)}`
+}
+
+function hashSuggestionSignature(value: string) {
+  let hash = 2166136261
+
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+
+  return (hash >>> 0).toString(36)
 }
 
 export function getRoomSuggestions(room: Room, floor: Floor) {
@@ -385,7 +431,13 @@ export function getRoomSuggestions(room: Room, floor: Floor) {
       }
 
       suggestions.push({
-        id: makeId('suggest'),
+        id: createRoomSuggestionId({
+          roomId: room.id,
+          kind: 'gap',
+          relatedRoomId: candidate.id,
+          gapFeet: gap.gapFeet,
+          overlapFeet: gap.overlapFeet,
+        }),
         kind: 'gap',
         roomId: room.id,
         relatedRoomId: candidate.id,

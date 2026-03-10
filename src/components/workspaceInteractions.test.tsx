@@ -175,7 +175,8 @@ describe('workspace interactions', () => {
     expect(screen.queryByRole('combobox', { name: 'Measurement source' })).not.toBeInTheDocument()
   })
 
-  it('dismisses inferred wall previews from the canvas with the reject button', () => {
+  it('keeps dismissed inferred wall previews hidden after draft recomputes and route changes', async () => {
+    const user = userEvent.setup()
     const draft = createSeedState()
 
     renderEditor({ draft })
@@ -185,6 +186,15 @@ describe('workspace interactions', () => {
     fireEvent.click(screen.getAllByTestId(/canvas-suggestion-dismiss-/)[0])
 
     expect(screen.getAllByTestId(/canvas-suggestion-actions-/)).toHaveLength(initialCount - 1)
+
+    await user.click(screen.getByRole('checkbox', { name: 'Inference' }))
+    await user.click(screen.getByRole('checkbox', { name: 'Inference' }))
+
+    expect(screen.getAllByTestId(/canvas-suggestion-actions-/)).toHaveLength(initialCount - 1)
+
+    await user.click(screen.getByRole('link', { name: 'Open detail page' }))
+
+    expect(screen.queryAllByRole('button', { name: 'Apply' })).toHaveLength(initialCount - 1)
   })
 
   it('shows the grid legend using whole-foot sizing', () => {

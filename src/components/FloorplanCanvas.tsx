@@ -168,13 +168,11 @@ export function FloorplanCanvas() {
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 })
   const [selectionBox, setSelectionBox] = useState<CanvasRect | null>(null)
   const [inlineWallEditor, setInlineWallEditor] = useState<InlineWallEditorState | null>(null)
-  const [dismissedSuggestionIds, setDismissedSuggestionIds] = useState<string[]>([])
   const canvasAspectRatio =
     canvasSize.width > 0 && canvasSize.height > 0 ? canvasSize.width / canvasSize.height : undefined
   const viewBox = getViewBox(viewBounds, ui.camera.zoom, ui.camera.offset, canvasAspectRatio)
 
   const shapeSuggestions = roomSuggestions.filter(hasSuggestedSegments)
-  const visibleShapeSuggestions = shapeSuggestions.filter((suggestion) => !dismissedSuggestionIds.includes(suggestion.id))
   const canvasMetrics = getCanvasMetrics(viewBox, canvasSize)
   const structureBadgeRect = getCanvasStructureChipRect(viewBox, canvasMetrics)
   const canvasToolbarRect = getCanvasToolbarRect(viewBox, canvasMetrics)
@@ -182,7 +180,7 @@ export function FloorplanCanvas() {
   const suggestedPreviews =
     draft.showInferred && selectedRoom
       ? placeSuggestionPreviews(
-          visibleShapeSuggestions.map((suggestion) => buildSuggestionPreview(selectedRoom, suggestion)),
+          shapeSuggestions.map((suggestion) => buildSuggestionPreview(selectedRoom, suggestion)),
           viewBox,
           canvasMetrics,
           [
@@ -326,16 +324,6 @@ export function FloorplanCanvas() {
       placedAnnotations.map((annotation) => [getAnnotationPlacementKey(annotation), annotation.candidateIndex]),
     )
   }, [placedAnnotations])
-
-  useEffect(() => {
-    const availableSuggestionIds = new Set(shapeSuggestions.map((suggestion) => suggestion.id))
-
-    setDismissedSuggestionIds((current) => {
-      const next = current.filter((id) => availableSuggestionIds.has(id))
-
-      return next.length === current.length && next.every((id, index) => id === current[index]) ? current : next
-    })
-  }, [shapeSuggestions])
 
   return (
     <div className={[ 'canvas-stage', isDragging ? 'dragging' : '', selectionBox ? 'selecting' : '' ].filter(Boolean).join(' ')}>
@@ -991,11 +979,7 @@ export function FloorplanCanvas() {
                   aria-label="Dismiss inferred wall"
                   className="canvas-suggestion-action canvas-suggestion-action--dismiss"
                   data-testid={`canvas-suggestion-dismiss-${preview.suggestion.id}`}
-                  onClick={() =>
-                    setDismissedSuggestionIds((current) =>
-                      current.includes(preview.suggestion.id) ? current : [...current, preview.suggestion.id],
-                    )
-                  }
+                  onClick={() => actions.dismissSuggestion(preview.suggestion.id)}
                   type="button"
                 >
                   ×
