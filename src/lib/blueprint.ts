@@ -17,7 +17,6 @@ import {
   emptyBounds,
   formatFeet,
   mergeBounds,
-  midpoint,
   pointDistance,
   projectVector,
   roomToGeometry,
@@ -552,11 +551,7 @@ export function getRoomLabelPoint(room: Room) {
     return room.anchor
   }
 
-  if (geometry.closed && geometry.points.length >= 4) {
-    return boundsCenter(geometry.bounds)
-  }
-
-  return midpoint(geometry.points[0], geometry.points[geometry.points.length - 1])
+  return boundsCenter(geometry.bounds)
 }
 
 export function touchStructure(structure: Structure) {
