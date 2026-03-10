@@ -23,13 +23,8 @@ test('supports direct canvas editing and route-based navigation', async ({ page 
     throw new Error('Expected room label bounding box before zoom')
   }
 
-  await canvas.dispatchEvent('wheel', {
-    bubbles: true,
-    cancelable: true,
-    clientX: canvasBox.x + canvasBox.width / 2,
-    clientY: canvasBox.y + canvasBox.height / 2,
-    deltaY: -400,
-  })
+  await page.mouse.move(roomLabelBeforeZoom.x + roomLabelBeforeZoom.width / 2, roomLabelBeforeZoom.y + roomLabelBeforeZoom.height / 2)
+  await page.mouse.wheel(0, -400)
   await expect(page.locator('.toolbar-pill').first()).toHaveText('102%')
   const roomLabelAfterZoom = await roomLabel.boundingBox()
   if (!roomLabelAfterZoom) {
@@ -38,10 +33,30 @@ test('supports direct canvas editing and route-based navigation', async ({ page 
   expect(roomLabelAfterZoom.width).toBeCloseTo(roomLabelBeforeZoom.width, 1)
   expect(roomLabelAfterZoom.height).toBeCloseTo(roomLabelBeforeZoom.height, 1)
 
-  await page.mouse.move(canvasBox.x + canvasBox.width / 2, canvasBox.y + canvasBox.height / 2)
+  await page.mouse.move(roomLabelAfterZoom.x + roomLabelAfterZoom.width / 2, roomLabelAfterZoom.y + roomLabelAfterZoom.height / 2)
   const initialScrollY = await page.evaluate(() => window.scrollY)
   await page.mouse.wheel(0, 400)
   expect(await page.evaluate(() => window.scrollY)).toBe(initialScrollY)
+  await expect(page.locator('.toolbar-pill').first()).toHaveText('100%')
+
+  const initialViewBox = parseViewBox(await canvas.getAttribute('viewBox'))
+  await canvas.dispatchEvent('wheel', {
+    bubbles: true,
+    cancelable: true,
+    clientX: canvasBox.x + 4,
+    clientY: canvasBox.y + canvasBox.height / 2,
+    deltaY: -400,
+  })
+  await expect(page.locator('.toolbar-pill').first()).toHaveText('102%')
+  const edgeZoomViewBox = parseViewBox(await canvas.getAttribute('viewBox'))
+  const initialCenterX = initialViewBox.x + initialViewBox.width / 2
+  const edgeCenterX = edgeZoomViewBox.x + edgeZoomViewBox.width / 2
+  expect(edgeCenterX).toBeLessThan(initialCenterX)
+  expect(edgeCenterX).toBeGreaterThan(initialCenterX - 2)
+
+  await page.mouse.move(canvasBox.x + 4, canvasBox.y + canvasBox.height / 2)
+  await page.mouse.wheel(0, 400)
+  await expect(page.locator('.toolbar-pill').first()).toHaveText('100%')
 
   await roomLabel.click({ force: true })
   await expect(page.getByRole('dialog')).toContainText('Rename room')
@@ -117,3 +132,12 @@ test('supports right-click menus across the 2D view and JSON round-trips', async
   await expect(page).toHaveURL(/\/workspace$/)
   await expect(page.getByRole('heading', { name: 'Cedar House' })).toBeVisible()
 })
+
+function parseViewBox(value: string | null) {
+  if (!value) {
+    throw new Error('Expected viewBox attribute')
+  }
+
+  const [x, y, width, height] = value.split(' ').map(Number)
+  return { x, y, width, height }
+}

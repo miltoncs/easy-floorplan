@@ -140,10 +140,18 @@ type InlineWallEditorState = {
   error: string | null
 }
 
+type WheelGestureState = {
+  clientX: number
+  clientY: number
+  timeoutId: number | null
+}
+
 const GRID_MINOR_SIZE_FEET = 1
 const GRID_MAJOR_MULTIPLE = 4
 const GRID_MAJOR_SIZE_FEET = GRID_MINOR_SIZE_FEET * GRID_MAJOR_MULTIPLE
 const WHEEL_ZOOM_MULTIPLIER = 1.02
+const WHEEL_GESTURE_IDLE_MS = 160
+const WHEEL_GESTURE_ANCHOR_TOLERANCE_PX = 48
 const BUTTON_ZOOM_MULTIPLIER = 1.03
 
 export function FloorplanCanvas() {
@@ -159,8 +167,10 @@ export function FloorplanCanvas() {
     visibleFloors,
     actions,
   } = useEditor()
+  const stageRef = useRef<HTMLDivElement | null>(null)
   const svgRef = useRef<SVGSVGElement | null>(null)
   const dragRef = useRef<DragState>(null)
+  const wheelGestureRef = useRef<WheelGestureState | null>(null)
   const suppressCanvasClickRef = useRef(false)
   const inlineWallInputRef = useRef<HTMLInputElement | null>(null)
   const annotationPlacementRef = useRef<Record<string, number>>({})
@@ -259,7 +269,7 @@ export function FloorplanCanvas() {
     const currentViewY = viewBox.y + pointerRatioY * viewBox.height
     const nextZoom = deltaY > 0 ? ui.camera.zoom / WHEEL_ZOOM_MULTIPLIER : ui.camera.zoom * WHEEL_ZOOM_MULTIPLIER
     const clampedZoom = Math.max(0.45, Math.min(3.5, nextZoom))
-    const nextViewBox = getViewBox(viewBounds, clampedZoom)
+    const nextViewBox = getViewBox(viewBounds, clampedZoom, { x: 0, y: 0 }, canvasAspectRatio)
 
     actions.setCamera({
       zoom: clampedZoom,
@@ -270,22 +280,70 @@ export function FloorplanCanvas() {
     })
   })
 
-  useEffect(() => {
-    const svg = svgRef.current
+  const getWheelZoomAnchor = useEffectEvent((clientX: number, clientY: number) => {
+    const activeGesture = wheelGestureRef.current
+    const shouldStartNewGesture =
+      !activeGesture ||
+      Math.hypot(activeGesture.clientX - clientX, activeGesture.clientY - clientY) > WHEEL_GESTURE_ANCHOR_TOLERANCE_PX
 
-    if (!svg) {
+    if (shouldStartNewGesture) {
+      wheelGestureRef.current = {
+        clientX,
+        clientY,
+        timeoutId: null,
+      }
+    }
+
+    if (wheelGestureRef.current?.timeoutId !== null) {
+      window.clearTimeout(wheelGestureRef.current.timeoutId)
+    }
+
+    const anchor = {
+      clientX: wheelGestureRef.current?.clientX ?? clientX,
+      clientY: wheelGestureRef.current?.clientY ?? clientY,
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      wheelGestureRef.current = null
+    }, WHEEL_GESTURE_IDLE_MS)
+
+    wheelGestureRef.current = {
+      clientX: anchor.clientX,
+      clientY: anchor.clientY,
+      timeoutId,
+    }
+
+    return anchor
+  })
+
+  useEffect(() => {
+    const stage = stageRef.current
+
+    if (!stage) {
       return
     }
 
     const handleWheel = (event: WheelEvent) => {
+      if (shouldIgnoreWheelZoom(event.target)) {
+        return
+      }
+
       event.preventDefault()
       event.stopPropagation()
-      applyWheelZoom(event.clientX, event.clientY, event.deltaY)
+      const anchor = getWheelZoomAnchor(event.clientX, event.clientY)
+      applyWheelZoom(anchor.clientX, anchor.clientY, event.deltaY)
     }
 
-    svg.addEventListener('wheel', handleWheel, { passive: false })
-    return () => svg.removeEventListener('wheel', handleWheel)
-  }, [ui.camera.zoom, viewBox, viewBounds])
+    stage.addEventListener('wheel', handleWheel, { passive: false })
+    return () => stage.removeEventListener('wheel', handleWheel)
+  }, [])
+
+  useEffect(() => () => {
+    const timeoutId = wheelGestureRef.current?.timeoutId
+    if (timeoutId !== null && timeoutId !== undefined) {
+      window.clearTimeout(timeoutId)
+    }
+  }, [])
 
   useEffect(() => {
     const svg = svgRef.current
@@ -330,7 +388,10 @@ export function FloorplanCanvas() {
   }, [placedAnnotations])
 
   return (
-    <div className={[ 'canvas-stage', isDragging ? 'dragging' : '', selectionBox ? 'selecting' : '' ].filter(Boolean).join(' ')}>
+    <div
+      className={[ 'canvas-stage', isDragging ? 'dragging' : '', selectionBox ? 'selecting' : '' ].filter(Boolean).join(' ')}
+      ref={stageRef}
+    >
       <svg
         ref={svgRef}
         aria-label="Interactive floorplan canvas"
@@ -1592,6 +1653,14 @@ function buildSelectableCanvasTargets({
   }
 
   return targets
+}
+
+function shouldIgnoreWheelZoom(target: EventTarget | null) {
+  if (!(target instanceof Element)) {
+    return false
+  }
+
+  return Boolean(target.closest('input, textarea, select, .canvas-toolbar, .canvas-key, .canvas-suggestion-layer'))
 }
 
 function hasSuggestedSegments(

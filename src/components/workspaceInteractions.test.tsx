@@ -144,6 +144,103 @@ describe('workspace interactions', () => {
     expect(screen.queryAllByTestId(/anchor-/)).toHaveLength(0)
   })
 
+  it('keeps the view centered during a single wheel zoom gesture', async () => {
+    renderEditor({ draft: createSeedState() })
+
+    const svg = screen.getByLabelText('Interactive floorplan canvas')
+    mockCanvasRect(svg)
+
+    const initialCenter = getViewBoxCenter(svg)
+
+    svg.dispatchEvent(new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 220,
+      clientY: 180,
+      deltaY: -120,
+    }))
+
+    await waitFor(() => expect(screen.getByText('102%')).toBeInTheDocument())
+
+    svg.dispatchEvent(new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 248,
+      clientY: 196,
+      deltaY: -120,
+    }))
+
+    await waitFor(() => expect(screen.getByText('104%')).toBeInTheDocument())
+
+    const finalCenter = getViewBoxCenter(svg)
+    expect(finalCenter.x).toBeCloseTo(initialCenter.x, 5)
+    expect(finalCenter.y).toBeCloseTo(initialCenter.y, 5)
+  })
+
+  it('supports wheel zoom while hovering a room label', async () => {
+    const draft = createSeedState()
+    const room = draft.structures[0].floors[0].rooms[0]
+
+    renderEditor({ draft })
+
+    const svg = screen.getByLabelText('Interactive floorplan canvas')
+    mockCanvasRect(svg)
+
+    const roomLabel = screen.getByTestId(`room-label-${room.id}`)
+    const wheelEvent = new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 220,
+      clientY: 180,
+      deltaY: -120,
+    })
+
+    roomLabel.dispatchEvent(wheelEvent)
+
+    await waitFor(() => expect(screen.getByText('102%')).toBeInTheDocument())
+    expect(wheelEvent.defaultPrevented).toBe(true)
+  })
+
+  it('does not fling the view when wheel zoom starts near the canvas edges', async () => {
+    renderEditor({ draft: createSeedState() })
+
+    const svg = screen.getByLabelText('Interactive floorplan canvas')
+    mockCanvasRect(svg)
+
+    const initialCenter = getViewBoxCenter(svg)
+
+    svg.dispatchEvent(new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 4,
+      clientY: 180,
+      deltaY: -120,
+    }))
+
+    await waitFor(() => expect(screen.getByText('102%')).toBeInTheDocument())
+
+    const leftZoomCenter = getViewBoxCenter(svg)
+    expect(leftZoomCenter.x).toBeLessThan(initialCenter.x)
+    expect(leftZoomCenter.x).toBeGreaterThan(initialCenter.x - 2)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Fit' }))
+    await waitFor(() => expect(screen.getByText('100%')).toBeInTheDocument())
+
+    svg.dispatchEvent(new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 436,
+      clientY: 180,
+      deltaY: -120,
+    }))
+
+    await waitFor(() => expect(screen.getByText('102%')).toBeInTheDocument())
+
+    const rightZoomCenter = getViewBoxCenter(svg)
+    expect(rightZoomCenter.x).toBeGreaterThan(initialCenter.x)
+    expect(rightZoomCenter.x).toBeLessThan(initialCenter.x + 2)
+  })
+
   it('edits furniture dimensions using feet-based inputs', async () => {
     const user = userEvent.setup()
     const draft = createSeedState()
@@ -523,4 +620,18 @@ function mockCanvasRect(element: HTMLElement) {
       toJSON: () => ({}),
     }),
   })
+}
+
+function getViewBoxCenter(element: HTMLElement) {
+  const viewBox = element.getAttribute('viewBox')
+
+  if (!viewBox) {
+    throw new Error('Expected viewBox attribute')
+  }
+
+  const [x, y, width, height] = viewBox.split(' ').map((value) => Number.parseFloat(value))
+  return {
+    x: x + width / 2,
+    y: y + height / 2,
+  }
 }
