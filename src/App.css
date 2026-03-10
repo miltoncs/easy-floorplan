@@ -455,8 +455,8 @@
 
 .workspace-canvas {
   min-height: 0;
+  min-width: 0;
   display: flex;
-  padding: 0.75rem;
   overflow: hidden;
 }
 
@@ -485,9 +485,10 @@
   min-height: 0;
   height: 100%;
   max-height: 100%;
-  border-radius: var(--radius-card);
+  border-radius: var(--radius-panel);
   overflow: hidden;
-  border: 1px solid rgba(23, 23, 23, 0.16);
+  border: 1px solid rgba(23, 23, 23, 0.1);
+  box-shadow: var(--shadow);
   background:
     linear-gradient(180deg, rgba(253, 253, 252, 0.98), rgba(246, 245, 241, 0.98)),
     #faf9f5;

@@ -75,7 +75,7 @@ export function WorkspacePage() {
   return (
     <section className="workspace-page">
       <div className="workspace-grid">
-        <div className="workspace-canvas panel-card">
+        <div className="workspace-canvas">
           <FloorplanCanvas />
         </div>
 
