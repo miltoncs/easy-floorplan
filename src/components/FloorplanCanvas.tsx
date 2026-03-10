@@ -236,6 +236,10 @@ export function FloorplanCanvas() {
     canvasMetrics,
     showFurniture: draft.editorMode === 'furniture',
   })
+  const anchorableSegmentIds =
+    draft.editorMode === 'rooms' && selectedRoom
+      ? new Set(getRoomCorners(selectedRoom).filter((corner) => corner.isExit).map((corner) => corner.segmentId))
+      : null
 
   const canvasTarget: CanvasTarget = {
     kind: 'canvas',
@@ -664,8 +668,8 @@ export function FloorplanCanvas() {
             })
           : null}
 
-        {selectedRoom && selectedRoomGeometry && activeStructure && activeFloor
-          ? selectedRoomGeometry.segments.map((segment) => (
+        {selectedRoomGeometry && activeStructure && activeFloor && anchorableSegmentIds
+          ? selectedRoomGeometry.segments.filter((segment) => anchorableSegmentIds.has(segment.id)).map((segment) => (
               <g
                 key={`${segment.id}-anchor`}
                 className="anchor-action"

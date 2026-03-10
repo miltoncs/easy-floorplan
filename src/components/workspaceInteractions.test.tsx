@@ -46,6 +46,7 @@ describe('workspace interactions', () => {
   it('supports wheel zoom, room and furniture dragging, and wall anchors', async () => {
     const draft = createSeedState()
     const room = draft.structures[0].floors[0].rooms[0]
+    const openEndWall = room.segments[room.segments.length - 1]
     const furniture = room.furniture[0]
 
     renderEditor({ draft })
@@ -93,7 +94,9 @@ describe('workspace interactions', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 
     const wallCount = document.querySelectorAll('[data-testid^="wall-hit-"]').length
-    fireEvent.click(screen.getByTestId(`anchor-${room.segments[0].id}`))
+    expect(screen.queryByTestId(`anchor-${room.segments[0].id}`)).not.toBeInTheDocument()
+    expect(screen.getByTestId(`anchor-${openEndWall.id}`)).toBeInTheDocument()
+    fireEvent.click(screen.getByTestId(`anchor-${openEndWall.id}`))
     expect(screen.getByRole('dialog')).toHaveTextContent('Edit wall')
     await waitFor(() =>
       expect(document.querySelectorAll('[data-testid^="wall-hit-"]').length).toBe(wallCount + 1),
@@ -101,6 +104,7 @@ describe('workspace interactions', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Close' }))
     fireEvent.click(screen.getByRole('button', { name: /^Furniture$/ }))
+    expect(screen.queryByTestId(`anchor-${openEndWall.id}`)).not.toBeInTheDocument()
 
     const furnitureRect = screen.getByTestId(`furniture-${furniture.id}`)
     const initialFurnitureX = Number(furnitureRect.getAttribute('x'))
@@ -126,6 +130,18 @@ describe('workspace interactions', () => {
       expect(Number(screen.getByTestId(`furniture-${furniture.id}`).getAttribute('x'))).toBeGreaterThan(initialFurnitureX),
     )
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /^Stacked$/ }))
+    expect(screen.queryByTestId(`anchor-${openEndWall.id}`)).not.toBeInTheDocument()
+  })
+
+  it('hides wall anchors when the selected room has no open wall ends', () => {
+    const draft = createSeedState()
+    draft.selectedRoomId = draft.structures[0].floors[0].rooms[1].id
+
+    renderEditor({ draft })
+
+    expect(screen.queryAllByTestId(/anchor-/)).toHaveLength(0)
   })
 
   it('edits furniture dimensions using feet-based inputs', async () => {
