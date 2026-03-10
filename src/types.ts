@@ -1,9 +1,13 @@
 export type EditorMode = 'rooms' | 'furniture' | 'stacked'
 
+export type NamedEntityKind = 'structure' | 'floor' | 'room' | 'furniture'
+
 export type Point = {
   x: number
   y: number
 }
+
+export type WallSource = 'measured' | 'inferred'
 
 export type OutlineSegment = {
   id: string
@@ -11,6 +15,7 @@ export type OutlineSegment = {
   length: number
   turn: number
   notes: string
+  source: WallSource
 }
 
 export type Furniture = {
@@ -59,6 +64,115 @@ export type DraftState = {
   editorMode: EditorMode
   showGrid: boolean
   showInferred: boolean
+  showRoomFloorLabels: boolean
+  showWallLabels: boolean
+  showAngleLabels: boolean
+}
+
+export type EntityIds = {
+  structureId: string
+  floorId?: string
+  roomId?: string
+  furnitureId?: string
+  segmentId?: string
+}
+
+export type CanvasTarget =
+  | ({
+      kind: 'canvas'
+      structureId?: string
+      floorId?: string
+    })
+  | ({
+      kind: 'structure'
+      structureId: string
+    })
+  | ({
+      kind: 'floor'
+      structureId: string
+      floorId: string
+    })
+  | ({
+      kind: 'room'
+      structureId: string
+      floorId: string
+      roomId: string
+    })
+  | ({
+      kind: 'wall'
+      structureId: string
+      floorId: string
+      roomId: string
+      segmentId: string
+    })
+  | ({
+      kind: 'corner'
+      structureId: string
+      floorId: string
+      roomId: string
+      segmentId: string
+    })
+  | ({
+      kind: 'furniture'
+      structureId: string
+      floorId: string
+      roomId: string
+      furnitureId: string
+    })
+
+export type ContextMenuState = {
+  x: number
+  y: number
+  target: CanvasTarget
+} | null
+
+export type RenameDialogState = {
+  kind: 'rename'
+  entityKind: NamedEntityKind
+  ids: EntityIds
+}
+
+export type WallDialogState = {
+  kind: 'wall'
+  ids: EntityIds
+}
+
+export type CornerDialogState = {
+  kind: 'corner'
+  ids: EntityIds
+}
+
+export type FurnitureDialogState = {
+  kind: 'furniture'
+  ids: EntityIds
+}
+
+export type DialogState = RenameDialogState | WallDialogState | CornerDialogState | FurnitureDialogState | null
+
+export type CameraState = {
+  zoom: number
+  offset: Point
+}
+
+export type EditorUiState = {
+  status: string
+  camera: CameraState
+  dialog: DialogState
+  contextMenu: ContextMenuState
+  hoveredTarget: CanvasTarget | null
+  focusedTarget: CanvasTarget | null
+  selectionTargets: CanvasTarget[]
+}
+
+export type EditorHistoryState = {
+  past: DraftState[]
+  future: DraftState[]
+}
+
+export type EditorState = {
+  draft: DraftState
+  ui: EditorUiState
+  history: EditorHistoryState
 }
 
 export type SegmentGeometry = {
@@ -66,6 +180,7 @@ export type SegmentGeometry = {
   label: string
   length: number
   turn: number
+  source: WallSource
   heading: number
   start: Point
   end: Point
@@ -89,7 +204,16 @@ export type RoomGeometry = {
   bounds: Bounds
 }
 
-export type SuggestionSegment = Pick<OutlineSegment, 'label' | 'length' | 'turn'>
+export type CornerGeometry = {
+  segmentId: string
+  point: Point
+  turn: number
+  incomingLabel: string
+  outgoingLabel: string | null
+  isExit: boolean
+}
+
+export type SuggestionSegment = Pick<OutlineSegment, 'label' | 'length' | 'turn' | 'source'>
 
 export type RoomSuggestion = {
   id: string
@@ -101,3 +225,21 @@ export type RoomSuggestion = {
   gapFeet?: number
   segmentsToAdd?: SuggestionSegment[]
 }
+
+export type ExportEnvelopeKind = 'structure' | 'workspace'
+
+export type StructureExportEnvelope = {
+  kind: 'structure'
+  version: 2
+  exportedAt: string
+  payload: Structure
+}
+
+export type WorkspaceExportEnvelope = {
+  kind: 'workspace'
+  version: 2
+  exportedAt: string
+  payload: DraftState
+}
+
+export type ExportEnvelope = StructureExportEnvelope | WorkspaceExportEnvelope

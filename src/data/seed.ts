@@ -97,5 +97,8 @@ export function createSeedState(): DraftState {
     editorMode: 'rooms',
     showGrid: true,
     showInferred: true,
+    showRoomFloorLabels: true,
+    showWallLabels: true,
+    showAngleLabels: true,
   }
 }

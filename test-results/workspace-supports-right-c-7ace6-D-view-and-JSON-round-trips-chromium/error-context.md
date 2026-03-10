@@ -1,0 +1,156 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - paragraph [ref=e6]: Incremental Blueprint
+      - heading "Canvas-first survey editor" [level=1] [ref=e7]
+    - navigation "Primary" [ref=e8]:
+      - link "Workspace" [ref=e9] [cursor=pointer]:
+        - /url: /workspace
+      - link "Detail" [ref=e10] [cursor=pointer]:
+        - /url: /detail
+      - link "Data" [active] [ref=e11] [cursor=pointer]:
+        - /url: /data
+  - main [ref=e12]:
+    - generic [ref=e13]:
+      - generic [ref=e14]:
+        - generic [ref=e15]:
+          - button "Rooms" [ref=e16] [cursor=pointer]
+          - button "Furniture" [ref=e17] [cursor=pointer]
+          - button "Stacked" [ref=e18] [cursor=pointer]
+        - generic [ref=e19]:
+          - button "Add structure" [ref=e20] [cursor=pointer]
+          - button "Add floor" [ref=e21] [cursor=pointer]
+          - button "Add room" [ref=e22] [cursor=pointer]
+          - button "Add furniture" [ref=e23] [cursor=pointer]
+      - generic [ref=e24]:
+        - generic [ref=e26]:
+          - img "Interactive floorplan canvas" [ref=e27]
+          - button "Structure Cedar House" [ref=e45] [cursor=pointer]:
+            - generic [ref=e46]: Structure
+            - strong [ref=e47]: Cedar House
+          - generic "Canvas view controls" [ref=e48]:
+            - generic [ref=e49]:
+              - paragraph [ref=e50]: View
+              - button "-" [ref=e51] [cursor=pointer]
+              - generic [ref=e52]: 100%
+              - button "+" [ref=e53] [cursor=pointer]
+              - button "Fit" [ref=e54] [cursor=pointer]
+            - generic [ref=e55]:
+              - generic [ref=e56] [cursor=pointer]:
+                - checkbox "Grid" [checked] [ref=e57]
+                - generic: Grid
+              - generic [ref=e58] [cursor=pointer]:
+                - checkbox "Inference" [checked] [ref=e59]
+                - generic: Inference
+              - generic [ref=e60] [cursor=pointer]:
+                - checkbox "Room/Floor" [checked] [ref=e61]
+                - generic: Room/Floor
+              - generic [ref=e62] [cursor=pointer]:
+                - checkbox "Distances" [checked] [ref=e63]
+                - generic: Distances
+              - generic [ref=e64] [cursor=pointer]:
+                - checkbox "Angles" [checked] [ref=e65]
+                - generic: Angles
+          - generic "Canvas legend" [ref=e66]:
+            - generic [ref=e69]: Measured wall
+            - generic [ref=e72]: Inferred wall
+            - generic [ref=e75]: Grid 1' square
+            - paragraph [ref=e76]: Bold line every 4'
+          - generic:
+            - button "Kitchen" [ref=e77]
+            - button "90°" [ref=e78]
+            - generic [ref=e79]:
+              - button "18'" [ref=e80]
+              - button "Open full wall editor" [ref=e81] [cursor=pointer]: ...
+            - generic [ref=e82]:
+              - button "14'" [ref=e83]
+              - button "Open full wall editor" [ref=e84] [cursor=pointer]: ...
+            - button "First floor" [ref=e85]
+            - button "Living room" [ref=e86]
+          - generic "Canvas inference suggestions":
+            - generic:
+              - button "Accept inferred wall" [ref=e87] [cursor=pointer]: ✓
+              - button "Dismiss inferred wall" [ref=e88] [cursor=pointer]: ×
+            - generic:
+              - button "Accept inferred wall" [ref=e89] [cursor=pointer]: ✓
+              - button "Dismiss inferred wall" [ref=e90] [cursor=pointer]: ×
+        - complementary [ref=e91]:
+          - generic [ref=e92]:
+            - generic [ref=e93]:
+              - generic [ref=e94]:
+                - paragraph [ref=e95]: Active room
+                - heading "Living room" [level=2] [ref=e96]
+              - button "Rename" [ref=e97] [cursor=pointer]
+            - generic [ref=e98]:
+              - strong [ref=e99]: Ready for a geometry-based closure
+              - generic [ref=e100]: Close with two orthogonal legs is previewed on the canvas as dashed walls so you can decide before adding more measurements.
+            - generic [ref=e101]:
+              - article [ref=e102]:
+                - generic [ref=e103]: Measured on site
+                - strong [ref=e104]: 32'
+                - paragraph [ref=e105]: 2 direct walls
+              - article [ref=e106]:
+                - generic [ref=e107]: Quickest closure
+                - strong [ref=e108]: ~32'
+                - paragraph [ref=e109]: 18' forward, then 14' after a left turn.
+              - article [ref=e110]:
+                - generic [ref=e111]: Measured share
+                - strong [ref=e112]: 50%
+                - paragraph [ref=e113]: of the projected finished perimeter is already measured
+            - generic [ref=e114]:
+              - strong [ref=e115]: "Edit on the drawing:"
+              - text: click a wall distance to type a new measurement, click a corner angle to change the angle between walls, and use the wall three-dot menu for full wall settings.
+            - generic [ref=e116]:
+              - button "Add wall" [ref=e117] [cursor=pointer]
+              - button "Add furniture" [ref=e118] [cursor=pointer]
+              - link "Open detail page" [ref=e119] [cursor=pointer]:
+                - /url: /detail
+            - generic [ref=e120]:
+              - strong [ref=e121]: "Furniture in focus:"
+              - text: Sofa
+          - generic [ref=e122]:
+            - generic [ref=e123]:
+              - generic [ref=e124]:
+                - paragraph [ref=e125]: Project
+                - heading "Cedar House" [level=2] [ref=e126]
+              - button "Rename" [ref=e127] [cursor=pointer]
+            - generic [ref=e128]:
+              - article [ref=e129]:
+                - generic [ref=e130]: Floors
+                - strong [ref=e131]: "2"
+              - article [ref=e132]:
+                - generic [ref=e133]: Rooms
+                - strong [ref=e134]: "5"
+              - article [ref=e135]:
+                - generic [ref=e136]: View
+                - strong [ref=e137]: Rooms
+              - article [ref=e138]:
+                - generic [ref=e139]: Autosave
+                - strong [ref=e140]: Local JSON
+            - generic [ref=e141]:
+              - button "First floor 3 rooms" [ref=e142]:
+                - strong [ref=e143]: First floor
+                - generic [ref=e144]: 3 rooms
+              - button "Second floor 2 rooms" [ref=e145]:
+                - strong [ref=e146]: Second floor
+                - generic [ref=e147]: 2 rooms
+          - generic [ref=e148]:
+            - generic [ref=e150]:
+              - paragraph [ref=e151]: Room completion
+              - heading "Suggested closure" [level=2] [ref=e152]
+            - generic [ref=e153]:
+              - strong [ref=e154]: Close with two orthogonal legs
+              - generic [ref=e155]: 18' forward, then 14' after a left turn.
+            - generic [ref=e156]:
+              - strong [ref=e157]: "On canvas:"
+              - text: dashed preview walls show what can be inferred from the measurements you already took.
+            - article [ref=e159]:
+              - generic [ref=e160]:
+                - paragraph [ref=e161]: Possible inter-room wall cavity toward Hall
+                - text: 6" separates parallel walls across 12' of overlap.
+              - link "Inspect" [ref=e162] [cursor=pointer]:
+                - /url: /detail
+```

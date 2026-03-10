@@ -1,5 +1,6 @@
 import type {
   Bounds,
+  CanvasTarget,
   DraftState,
   Floor,
   Furniture,
@@ -7,6 +8,7 @@ import type {
   RoomSuggestion,
   Structure,
   SuggestionSegment,
+  WallSource,
 } from '../types'
 import {
   angleDelta,
@@ -41,6 +43,7 @@ export function createSegment(partial?: Partial<Room['segments'][number]>) {
     length: partial?.length ?? 10,
     turn: partial?.turn ?? 90,
     notes: partial?.notes ?? '',
+    source: normalizeWallSource(partial?.source),
   }
 }
 
@@ -62,12 +65,12 @@ export function createRoom(partial?: Partial<Room>): Room {
   return {
     id: partial?.id ?? makeId('room'),
     name,
-    color: partial?.color ?? '#3f7ad6',
+    color: partial?.color ?? '#f7f7f5',
     anchor: partial?.anchor ?? { x: 0, y: 0 },
     startHeading: partial?.startHeading ?? 0,
     notes: partial?.notes ?? '',
     segments:
-      partial?.segments ??
+      partial?.segments?.map((segment) => createSegment(segment)) ??
       [
         createSegment({ label: `${name} north wall`, length: 12, turn: 90 }),
         createSegment({ label: `${name} east wall`, length: 10, turn: 90 }),
@@ -98,6 +101,17 @@ export function createStructure(partial?: Partial<Structure>): Structure {
 }
 
 export function ensureSelections(state: DraftState): DraftState {
+  normalizeDraftWallSources(state)
+  if (typeof state.showRoomFloorLabels !== 'boolean') {
+    state.showRoomFloorLabels = true
+  }
+  if (typeof state.showWallLabels !== 'boolean') {
+    state.showWallLabels = true
+  }
+  if (typeof state.showAngleLabels !== 'boolean') {
+    state.showAngleLabels = true
+  }
+
   if (state.structures.length === 0) {
     const structure = createStructure()
     const floor = structure.floors[0]
@@ -136,14 +150,109 @@ export function findActiveStructure(state: DraftState) {
   return state.structures.find((structure) => structure.id === state.activeStructureId) ?? state.structures[0]
 }
 
+export function findStructureById(state: DraftState, structureId: string) {
+  return state.structures.find((structure) => structure.id === structureId)
+}
+
 export function findActiveFloor(state: DraftState) {
   const structure = findActiveStructure(state)
   return structure?.floors.find((floor) => floor.id === state.activeFloorId) ?? structure?.floors[0]
 }
 
+export function findFloorById(state: DraftState, structureId: string, floorId: string) {
+  return findStructureById(state, structureId)?.floors.find((floor) => floor.id === floorId)
+}
+
 export function findSelectedRoom(state: DraftState) {
   const floor = findActiveFloor(state)
   return floor?.rooms.find((room) => room.id === state.selectedRoomId) ?? floor?.rooms[0]
+}
+
+export function findRoomById(state: DraftState, structureId: string, floorId: string, roomId: string) {
+  return findFloorById(state, structureId, floorId)?.rooms.find((room) => room.id === roomId)
+}
+
+export function findSelectedFurniture(state: DraftState) {
+  const room = findSelectedRoom(state)
+  return room?.furniture.find((item) => item.id === state.selectedFurnitureId) ?? room?.furniture[0]
+}
+
+export function findFurnitureById(
+  state: DraftState,
+  structureId: string,
+  floorId: string,
+  roomId: string,
+  furnitureId: string,
+) {
+  return findRoomById(state, structureId, floorId, roomId)?.furniture.find((item) => item.id === furnitureId)
+}
+
+export function findSegmentById(state: DraftState, structureId: string, floorId: string, roomId: string, segmentId: string) {
+  return findRoomById(state, structureId, floorId, roomId)?.segments.find((segment) => segment.id === segmentId)
+}
+
+export function selectTargetInDraft(state: DraftState, target: CanvasTarget) {
+  switch (target.kind) {
+    case 'structure': {
+      const structure = findStructureById(state, target.structureId)
+      if (!structure) {
+        return
+      }
+      state.activeStructureId = structure.id
+      state.activeFloorId = structure.floors[0]?.id ?? ''
+      state.selectedRoomId = structure.floors[0]?.rooms[0]?.id ?? null
+      state.selectedFurnitureId = null
+      return
+    }
+    case 'floor': {
+      const floor = findFloorById(state, target.structureId, target.floorId)
+      if (!floor) {
+        return
+      }
+      state.activeStructureId = target.structureId
+      state.activeFloorId = floor.id
+      state.selectedRoomId = floor.rooms[0]?.id ?? null
+      state.selectedFurnitureId = null
+      return
+    }
+    case 'room':
+    case 'wall':
+    case 'corner': {
+      const room = findRoomById(state, target.structureId, target.floorId, target.roomId)
+      if (!room) {
+        return
+      }
+      state.activeStructureId = target.structureId
+      state.activeFloorId = target.floorId
+      state.selectedRoomId = room.id
+      state.selectedFurnitureId = null
+      return
+    }
+    case 'furniture': {
+      const furniture = findFurnitureById(
+        state,
+        target.structureId,
+        target.floorId,
+        target.roomId,
+        target.furnitureId,
+      )
+      if (!furniture) {
+        return
+      }
+      state.activeStructureId = target.structureId
+      state.activeFloorId = target.floorId
+      state.selectedRoomId = target.roomId
+      state.selectedFurnitureId = furniture.id
+      return
+    }
+    case 'canvas':
+      if (target.structureId) {
+        state.activeStructureId = target.structureId
+      }
+      if (target.floorId) {
+        state.activeFloorId = target.floorId
+      }
+  }
 }
 
 export function getRoomCompletion(room: Room) {
@@ -201,6 +310,7 @@ export function getRoomSuggestions(room: Room, floor: Floor) {
                 label: `${room.name} closure wall`,
                 length: round(closureDistance),
                 turn: round(turnBackToStart, 1),
+                source: 'inferred',
               },
             ],
             'closure',
@@ -226,11 +336,13 @@ export function getRoomSuggestions(room: Room, floor: Floor) {
                 label: `${room.name} forward leg`,
                 length: round(forwardDistance),
                 turn: orthogonalTurn,
+                source: 'inferred',
               },
               {
                 label: `${room.name} return leg`,
                 length: round(Math.abs(sideDistance)),
                 turn: round(angleDelta(secondHeading, room.startHeading), 1),
+                source: 'inferred',
               },
             ],
             'orthogonal',
@@ -258,11 +370,13 @@ export function getRoomSuggestions(room: Room, floor: Floor) {
             label: `${room.name} mirrored wall`,
             length: room.segments[0].length,
             turn: cornerTurn,
+            source: 'inferred',
           },
           {
             label: `${room.name} final wall`,
             length: room.segments[1].length,
             turn: cornerTurn,
+            source: 'inferred',
           },
         ],
         'rectangle',
@@ -409,16 +523,31 @@ export function padBounds(bounds: Bounds, padding = 6): Bounds {
   }
 }
 
-export function getViewBox(bounds: Bounds, zoom: number) {
+export function getViewBox(
+  bounds: Bounds,
+  zoom: number,
+  offset = { x: 0, y: 0 },
+  aspectRatio?: number,
+) {
   const padded = padBounds(bounds, 6)
   const center = boundsCenter(padded)
   const size = boundsSize(padded)
-  const width = size.width / zoom
-  const height = size.height / zoom
+  let width = size.width / zoom
+  let height = size.height / zoom
+
+  if (aspectRatio && Number.isFinite(aspectRatio) && aspectRatio > 0) {
+    const currentRatio = width / height
+
+    if (currentRatio < aspectRatio) {
+      width = height * aspectRatio
+    } else if (currentRatio > aspectRatio) {
+      height = width / aspectRatio
+    }
+  }
 
   return {
-    x: center.x - width / 2,
-    y: -(center.y + height / 2),
+    x: center.x - width / 2 + offset.x,
+    y: -(center.y + height / 2) + offset.y,
     width,
     height,
   }
@@ -473,6 +602,22 @@ export function cloneImportedStructure(snapshot: Structure): Structure {
   })
 }
 
+export function normalizeWallSource(source?: WallSource): WallSource {
+  return source === 'inferred' ? 'inferred' : 'measured'
+}
+
+export function normalizeDraftWallSources(draft: DraftState) {
+  draft.structures.forEach((structure) => {
+    structure.floors.forEach((floor) => {
+      floor.rooms.forEach((room) => {
+        room.segments = room.segments.map((segment) => createSegment(segment))
+      })
+    })
+  })
+
+  return draft
+}
+
 export function loadDraftState() {
   const saved = window.localStorage.getItem(STORAGE_KEY)
 
@@ -482,7 +627,7 @@ export function loadDraftState() {
 
   try {
     const parsed = JSON.parse(saved) as DraftState
-    return ensureSelections(parsed)
+    return ensureSelections(normalizeDraftWallSources(parsed))
   } catch {
     return null
   }

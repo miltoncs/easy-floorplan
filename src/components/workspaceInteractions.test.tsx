@@ -1,0 +1,477 @@
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { describe, expect, it } from 'vitest'
+import { createSeedState } from '../data/seed'
+import { createRoom, createSegment } from '../lib/blueprint'
+import { renderEditor } from '../test/renderEditor'
+
+describe('workspace interactions', () => {
+  it('opens rename, inline wall edits, and corner dialogs from direct canvas clicks', async () => {
+    const user = userEvent.setup()
+    const draft = createSeedState()
+    const livingRoom = draft.structures[0].floors[0].rooms[0]
+    const firstWall = livingRoom.segments[0]
+
+    renderEditor({ draft })
+
+    fireEvent.click(screen.getByTestId(`room-label-${livingRoom.id}`))
+    expect(screen.getByRole('dialog')).toHaveTextContent('Rename room')
+    expect(screen.getByDisplayValue(livingRoom.name)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Close' }))
+
+    fireEvent.click(screen.getByTestId(`wall-label-${firstWall.id}`))
+    const inlineLength = screen.getByRole('textbox', { name: 'Wall length' })
+    expect(inlineLength).toHaveValue(String(firstWall.length))
+    fireEvent.change(inlineLength, { target: { value: `10'6"` } })
+    fireEvent.keyDown(inlineLength, { key: 'Enter' })
+    await waitFor(() => expect(screen.getByTestId(`wall-label-${firstWall.id}`)).toHaveTextContent(`10' 6"`))
+
+    fireEvent.click(screen.getByTestId(`wall-menu-${firstWall.id}`))
+    expect(screen.getByRole('dialog')).toHaveTextContent('Edit wall')
+    expect(screen.getByDisplayValue(firstWall.label)).toBeInTheDocument()
+    expect(screen.queryByRole('spinbutton', { name: 'Angle (deg)' })).not.toBeInTheDocument()
+    const dialogLength = screen.getByRole('textbox', { name: 'Length (ft)' })
+    fireEvent.change(dialogLength, { target: { value: `12'3"` } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save wall' }))
+    await waitFor(() => expect(screen.getByTestId(`wall-label-${firstWall.id}`)).toHaveTextContent(`12' 3"`))
+
+    fireEvent.click(screen.getByTestId(`corner-label-${firstWall.id}`))
+    const cornerDialog = screen.getByRole('dialog')
+    expect(cornerDialog).toHaveTextContent('Edit corner angle')
+    expect(screen.getByRole('spinbutton', { name: 'Angle (deg)' })).toHaveValue(90)
+    expect(cornerDialog).toHaveTextContent(/\+?90° between walls, left turn/)
+  })
+
+  it('supports wheel zoom, room and furniture dragging, and wall anchors', async () => {
+    const draft = createSeedState()
+    const room = draft.structures[0].floors[0].rooms[0]
+    const furniture = room.furniture[0]
+
+    renderEditor({ draft })
+
+    const svg = screen.getByLabelText('Interactive floorplan canvas')
+    mockCanvasRect(svg)
+
+    const wheelEvent = new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 220,
+      clientY: 180,
+      deltaY: -120,
+    })
+
+    svg.dispatchEvent(wheelEvent)
+    await waitFor(() => expect(screen.getByText('102%')).toBeInTheDocument())
+    expect(wheelEvent.defaultPrevented).toBe(true)
+
+    const roomLabel = screen.getByTestId(`room-label-${room.id}`)
+    const initialRoomLeft = Number.parseFloat(roomLabel.getAttribute('style')?.match(/left:\s*([\d.]+)px/)?.[1] ?? '0')
+
+    fireEvent.pointerDown(roomLabel, {
+      button: 0,
+      pointerId: 1,
+      clientX: 160,
+      clientY: 140,
+    })
+    fireEvent.pointerMove(svg, {
+      pointerId: 1,
+      clientX: 220,
+      clientY: 176,
+    })
+    fireEvent.pointerUp(svg, {
+      pointerId: 1,
+      clientX: 220,
+      clientY: 176,
+    })
+
+    await waitFor(() =>
+      expect(
+        Number.parseFloat(screen.getByTestId(`room-label-${room.id}`).getAttribute('style')?.match(/left:\s*([\d.]+)px/)?.[1] ?? '0'),
+      ).toBeGreaterThan(initialRoomLeft),
+    )
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    const wallCount = document.querySelectorAll('[data-testid^="wall-hit-"]').length
+    fireEvent.click(screen.getByTestId(`anchor-${room.segments[0].id}`))
+    expect(screen.getByRole('dialog')).toHaveTextContent('Edit wall')
+    await waitFor(() =>
+      expect(document.querySelectorAll('[data-testid^="wall-hit-"]').length).toBe(wallCount + 1),
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    fireEvent.click(screen.getByRole('button', { name: /^Furniture$/ }))
+
+    const furnitureRect = screen.getByTestId(`furniture-${furniture.id}`)
+    const initialFurnitureX = Number(furnitureRect.getAttribute('x'))
+
+    fireEvent.pointerDown(furnitureRect, {
+      button: 0,
+      pointerId: 2,
+      clientX: 240,
+      clientY: 220,
+    })
+    fireEvent.pointerMove(svg, {
+      pointerId: 2,
+      clientX: 280,
+      clientY: 244,
+    })
+    fireEvent.pointerUp(svg, {
+      pointerId: 2,
+      clientX: 280,
+      clientY: 244,
+    })
+
+    await waitFor(() =>
+      expect(Number(screen.getByTestId(`furniture-${furniture.id}`).getAttribute('x'))).toBeGreaterThan(initialFurnitureX),
+    )
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('edits furniture dimensions using feet-based inputs', async () => {
+    const user = userEvent.setup()
+    const draft = createSeedState()
+    const room = draft.structures[0].floors[0].rooms[0]
+    const furniture = room.furniture[0]
+
+    renderEditor({ draft })
+
+    await user.click(screen.getByRole('button', { name: /^Furniture$/ }))
+    fireEvent.click(screen.getByTestId(`furniture-${furniture.id}`))
+
+    expect(screen.getByRole('dialog')).toHaveTextContent('Edit furniture')
+    expect(screen.getByRole('textbox', { name: 'Width (ft)' })).toHaveValue(`7'`)
+    expect(screen.getByRole('textbox', { name: 'Depth (ft)' })).toHaveValue(`3'`)
+
+    await user.clear(screen.getByRole('textbox', { name: 'Width (ft)' }))
+    await user.type(screen.getByRole('textbox', { name: 'Width (ft)' }), `2'6"`)
+    await user.clear(screen.getByRole('textbox', { name: 'Depth (ft)' }))
+    await user.type(screen.getByRole('textbox', { name: 'Depth (ft)' }), `1'6"`)
+    await user.click(screen.getByRole('button', { name: 'Save furniture' }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(Number(screen.getByTestId(`furniture-${furniture.id}`).getAttribute('width'))).toBeCloseTo(2.5)
+    expect(Number(screen.getByTestId(`furniture-${furniture.id}`).getAttribute('height'))).toBeCloseTo(1.5)
+  })
+
+  it('renders room-closing suggestions beside inferred walls and applies them from the canvas', async () => {
+    const draft = createSeedState()
+
+    renderEditor({ draft })
+
+    expect(screen.getAllByTestId(/canvas-suggestion-actions-/).length).toBeGreaterThan(0)
+    expect(screen.getAllByTestId(/suggested-path-/).length).toBeGreaterThan(0)
+
+    const wallCount = document.querySelectorAll('[data-testid^="wall-label-"]').length
+    fireEvent.click(screen.getAllByTestId(/canvas-suggestion-accept-/)[0])
+
+    await waitFor(() =>
+      expect(document.querySelectorAll('[data-testid^="wall-label-"]').length).toBeGreaterThan(wallCount),
+    )
+
+    const wallMenus = screen.getAllByTestId(/wall-menu-/)
+    fireEvent.click(wallMenus[wallMenus.length - 1])
+    expect(screen.getByRole('combobox', { name: 'Measurement source' })).toHaveValue('inferred')
+  })
+
+  it('dismisses inferred wall previews from the canvas with the reject button', () => {
+    const draft = createSeedState()
+
+    renderEditor({ draft })
+
+    const initialCount = screen.getAllByTestId(/canvas-suggestion-actions-/).length
+
+    fireEvent.click(screen.getAllByTestId(/canvas-suggestion-dismiss-/)[0])
+
+    expect(screen.getAllByTestId(/canvas-suggestion-actions-/)).toHaveLength(initialCount - 1)
+  })
+
+  it('shows the grid legend using whole-foot sizing', () => {
+    const draft = createSeedState()
+
+    renderEditor({ draft })
+
+    expect(screen.getByTestId('canvas-grid-scale')).toHaveTextContent("Grid 1' square")
+    expect(screen.getByLabelText('Canvas legend')).toHaveTextContent("Bold line every 4'")
+  })
+
+  it('toggles canvas angle labels', async () => {
+    const user = userEvent.setup()
+    const draft = createSeedState()
+    const firstCorner = draft.structures[0].floors[0].rooms[0].segments[0]
+
+    renderEditor({ draft })
+
+    expect(screen.getByTestId(`corner-label-${firstCorner.id}`)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('checkbox', { name: 'Angles' }))
+
+    expect(screen.queryByTestId(`corner-label-${firstCorner.id}`)).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('checkbox', { name: 'Angles' }))
+
+    expect(screen.getByTestId(`corner-label-${firstCorner.id}`)).toBeInTheDocument()
+  })
+
+  it('toggles canvas wall distance labels', async () => {
+    const user = userEvent.setup()
+    const draft = createSeedState()
+    const firstWall = draft.structures[0].floors[0].rooms[0].segments[0]
+
+    renderEditor({ draft })
+
+    expect(screen.getByTestId(`wall-label-${firstWall.id}`)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('checkbox', { name: 'Distances' }))
+
+    expect(screen.queryByTestId(`wall-label-${firstWall.id}`)).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('checkbox', { name: 'Distances' }))
+
+    expect(screen.getByTestId(`wall-label-${firstWall.id}`)).toBeInTheDocument()
+  })
+
+  it('toggles canvas room and floor labels', async () => {
+    const user = userEvent.setup()
+    const draft = createSeedState()
+    const floor = draft.structures[0].floors[0]
+    const room = floor.rooms[0]
+
+    renderEditor({ draft })
+
+    expect(screen.getByTestId(`floor-label-${floor.id}`)).toBeInTheDocument()
+    expect(screen.getByTestId(`room-label-${room.id}`)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('checkbox', { name: 'Room/Floor' }))
+
+    expect(screen.queryByTestId(`floor-label-${floor.id}`)).not.toBeInTheDocument()
+    expect(screen.queryByTestId(`room-label-${room.id}`)).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('checkbox', { name: 'Room/Floor' }))
+
+    expect(screen.getByTestId(`floor-label-${floor.id}`)).toBeInTheDocument()
+    expect(screen.getByTestId(`room-label-${room.id}`)).toBeInTheDocument()
+  })
+
+  it('supports keyboard undo and redo for drawing changes', async () => {
+    const user = userEvent.setup()
+    const draft = createSeedState()
+    const nextRoomName = `Room ${draft.structures[0].floors[0].rooms.length + 1}`
+
+    renderEditor({ draft })
+
+    await user.click(screen.getByRole('button', { name: 'Add room' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: nextRoomName })).toBeInTheDocument())
+
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    await waitFor(() => expect(screen.queryByRole('heading', { name: nextRoomName })).not.toBeInTheDocument())
+
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true, shiftKey: true })
+    await waitFor(() => expect(screen.getByRole('heading', { name: nextRoomName })).toBeInTheDocument())
+  })
+
+  it('does not trigger undo while typing in text inputs', async () => {
+    const user = userEvent.setup()
+    const draft = createSeedState()
+    const room = draft.structures[0].floors[0].rooms[0]
+    const floor = draft.structures[0].floors[0]
+    const expandedFloorLabel = new RegExp(`${floor.name}${floor.rooms.length + 1} rooms`)
+
+    renderEditor({ draft })
+
+    await user.click(screen.getByRole('button', { name: 'Add room' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: expandedFloorLabel })).toBeInTheDocument())
+
+    fireEvent.click(screen.getByTestId(`room-label-${room.id}`))
+    const input = screen.getByRole('textbox', { name: 'Name' })
+    input.focus()
+
+    fireEvent.keyDown(input, { key: 'z', ctrlKey: true })
+
+    expect(screen.getByRole('dialog')).toHaveTextContent('Rename room')
+    expect(screen.getByRole('button', { name: expandedFloorLabel })).toBeInTheDocument()
+  })
+
+  it('deletes the room when its last wall is deleted', async () => {
+    const user = userEvent.setup()
+    const draft = createSeedState()
+    const floor = draft.structures[0].floors[0]
+    const singleWallRoom = createRoom({
+      name: 'Closet',
+      anchor: { x: 26, y: 6 },
+      segments: [createSegment({ label: 'Closet wall', length: 4, turn: 90 })],
+    })
+
+    floor.rooms.push(singleWallRoom)
+    draft.selectedRoomId = singleWallRoom.id
+
+    renderEditor({ draft, initialPath: '/detail' })
+
+    expect(screen.getByRole('heading', { name: 'Closet' })).toBeInTheDocument()
+
+    const wallRow = screen.getByText('Closet wall').closest('.measurement-row')
+    if (!wallRow) {
+      throw new Error('Expected wall measurement row')
+    }
+
+    await user.click(within(wallRow as HTMLElement).getByRole('button', { name: 'Delete' }))
+
+    await waitFor(() => expect(screen.queryByRole('heading', { name: 'Closet' })).not.toBeInTheDocument())
+    expect(screen.getByRole('button', { name: /First floor3 rooms/i })).toBeInTheDocument()
+  })
+
+  it('supports shift-drag marquee selection on the canvas', async () => {
+    const draft = createSeedState()
+
+    renderEditor({ draft })
+
+    const svg = screen.getByLabelText('Interactive floorplan canvas')
+    const canvasEmpty = screen.getByTestId('canvas-empty')
+    mockCanvasRect(svg)
+    mockCanvasRect(canvasEmpty)
+
+    fireEvent.pointerDown(canvasEmpty, {
+      button: 0,
+      pointerId: 7,
+      clientX: 16,
+      clientY: 16,
+      shiftKey: true,
+    })
+    expect(screen.getByTestId('canvas-selection-box')).toBeInTheDocument()
+
+    fireEvent.pointerMove(svg, {
+      pointerId: 7,
+      clientX: 960,
+      clientY: 720,
+    })
+    fireEvent.pointerUp(svg, {
+      pointerId: 7,
+      clientX: 960,
+      clientY: 720,
+    })
+
+    await waitFor(() => expect(screen.getByTestId('box-selection-summary')).toHaveTextContent('3 rooms'))
+    expect(screen.getByTestId('box-selection-summary')).toHaveTextContent('2 walls')
+  })
+
+  it('opens context menus for structure, floor, room, wall, furniture, and empty canvas targets', async () => {
+    const user = userEvent.setup()
+    const draft = createSeedState()
+    const structure = draft.structures[0]
+    const floor = structure.floors[0]
+    const room = floor.rooms[0]
+    const wall = room.segments[0]
+    const furniture = room.furniture[0]
+
+    renderEditor({ draft })
+
+    fireEvent.contextMenu(screen.getByTestId('structure-badge'))
+    expect(screen.getByRole('menu')).toHaveTextContent('Rename structure')
+    fireEvent.pointerDown(document.body)
+
+    fireEvent.contextMenu(screen.getByTestId(`floor-label-${floor.id}`))
+    expect(screen.getByRole('menu')).toHaveTextContent('Rename floor')
+    fireEvent.pointerDown(document.body)
+
+    fireEvent.contextMenu(screen.getByTestId(`room-label-${room.id}`))
+    expect(screen.getByRole('menu')).toHaveTextContent('Rename room')
+    fireEvent.pointerDown(document.body)
+
+    fireEvent.contextMenu(screen.getByTestId(`wall-label-${wall.id}`))
+    expect(screen.getByRole('menu')).toHaveTextContent('Edit wall measurements')
+    fireEvent.pointerDown(document.body)
+
+    fireEvent.contextMenu(screen.getByTestId(`corner-label-${wall.id}`))
+    expect(screen.getByRole('menu')).toHaveTextContent('Edit corner angle')
+    fireEvent.pointerDown(document.body)
+
+    fireEvent.contextMenu(screen.getByTestId('canvas-empty'))
+    expect(screen.getByRole('menu')).toHaveTextContent('Fit view')
+    fireEvent.pointerDown(document.body)
+
+    await user.click(screen.getByRole('button', { name: 'Furniture' }))
+    fireEvent.contextMenu(screen.getByTestId(`furniture-${furniture.id}`))
+    expect(screen.getByRole('menu')).toHaveTextContent('Edit furniture')
+  })
+
+  it('keeps annotations near their geometry by hiding them once the described element is well offscreen', async () => {
+    const draft = createSeedState()
+    const room = draft.structures[0].floors[0].rooms[0]
+    const firstWall = room.segments[0]
+
+    renderEditor({ draft })
+
+    const svg = screen.getByLabelText('Interactive floorplan canvas')
+    const canvasEmpty = screen.getByTestId('canvas-empty')
+    mockCanvasRect(svg)
+    mockCanvasRect(canvasEmpty)
+
+    expect(screen.getByTestId(`room-label-${room.id}`)).toBeInTheDocument()
+    expect(screen.getByTestId(`wall-label-${firstWall.id}`)).toBeInTheDocument()
+
+    fireEvent.pointerDown(canvasEmpty, {
+      button: 0,
+      pointerId: 11,
+      clientX: 220,
+      clientY: 180,
+    })
+    fireEvent.pointerMove(svg, {
+      pointerId: 11,
+      clientX: -720,
+      clientY: 180,
+    })
+    fireEvent.pointerUp(svg, {
+      pointerId: 11,
+      clientX: -720,
+      clientY: 180,
+    })
+
+    await waitFor(() => expect(screen.queryByTestId(`room-label-${room.id}`)).not.toBeInTheDocument())
+    expect(screen.queryByTestId(`wall-label-${firstWall.id}`)).not.toBeInTheDocument()
+  })
+
+  it('blocks wall edits that would create intersecting walls', async () => {
+    const user = userEvent.setup()
+    const draft = createSeedState()
+    const room = draft.structures[0].floors[0].rooms[0]
+    room.anchor = { x: 0, y: 0 }
+    room.startHeading = 0
+    room.segments = [
+      createSegment({ id: 'seg-a', label: 'A', length: 10, turn: 90 }),
+      createSegment({ id: 'seg-b', label: 'B', length: 10, turn: 90 }),
+      createSegment({ id: 'seg-c', label: 'C', length: 10, turn: 90 }),
+      createSegment({ id: 'seg-d', label: 'D', length: 10, turn: 90 }),
+    ]
+
+    renderEditor({ draft })
+
+    fireEvent.click(screen.getByTestId('corner-label-seg-b'))
+    expect(screen.getByRole('dialog')).toHaveTextContent('Edit corner angle')
+
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Turn direction' }), 'right')
+    const angleInput = screen.getByRole('spinbutton', { name: 'Angle (deg)' })
+    await user.clear(angleInput)
+    await user.type(angleInput, '0')
+    await user.click(screen.getByRole('button', { name: 'Save angle' }))
+
+    expect(screen.getByRole('dialog')).toHaveTextContent('Walls cannot intersect.')
+    expect(screen.getByDisplayValue('0')).toBeInTheDocument()
+  })
+})
+
+function mockCanvasRect(element: HTMLElement) {
+  Object.defineProperty(element, 'getBoundingClientRect', {
+    configurable: true,
+    value: () => ({
+      x: 0,
+      y: 0,
+      left: 0,
+      top: 0,
+      right: 440,
+      bottom: 360,
+      width: 440,
+      height: 360,
+      toJSON: () => ({}),
+    }),
+  })
+}
