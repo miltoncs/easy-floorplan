@@ -3,12 +3,13 @@ import {
   useEffectEvent,
   useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
 import { useEditor } from '../context/EditorContext'
-import { computeFloorBounds, findSegmentById, getRoomLabelPoint, getViewBox } from '../lib/blueprint'
+import { DEFAULT_LABEL_FONT_SIZE, computeFloorBounds, findSegmentById, getRoomLabelPoint, getViewBox } from '../lib/blueprint'
 import { parseDistanceInput } from '../lib/distance'
 import {
   addPolar,
@@ -181,6 +182,12 @@ export function FloorplanCanvas() {
   const canvasAspectRatio =
     canvasSize.width > 0 && canvasSize.height > 0 ? canvasSize.width / canvasSize.height : undefined
   const viewBox = getViewBox(viewBounds, ui.camera.zoom, ui.camera.offset, canvasAspectRatio)
+  const labelScale = draft.labelFontSize / DEFAULT_LABEL_FONT_SIZE
+  const canvasAppearanceStyle = {
+    '--canvas-wall-line-scale': String(draft.wallStrokeScale),
+    '--canvas-label-font-size': `${draft.labelFontSize}px`,
+    '--canvas-label-scale': String(labelScale),
+  } as CSSProperties
 
   const shapeSuggestions = roomSuggestions.filter(hasSuggestedSegments)
   const canvasMetrics = getCanvasMetrics(viewBox, canvasSize)
@@ -219,6 +226,7 @@ export function FloorplanCanvas() {
     showRoomFloorLabels: draft.showRoomFloorLabels,
     showFurnitureLabels: draft.editorMode === 'furniture',
     showWallLabels: draft.showWallLabels && draft.editorMode !== 'furniture',
+    labelFontSize: draft.labelFontSize,
     reservedRects: reservedAnnotationRects,
     hoveredTarget: ui.hoveredTarget,
     focusedTarget: ui.focusedTarget,
@@ -385,8 +393,17 @@ export function FloorplanCanvas() {
 
   return (
     <div
-      className={[ 'canvas-stage', isDragging ? 'dragging' : '', selectionBox ? 'selecting' : '' ].filter(Boolean).join(' ')}
+      className={[
+        'canvas-stage',
+        isDragging ? 'dragging' : '',
+        selectionBox ? 'selecting' : '',
+        !draft.showLabelShapes ? 'canvas-stage--plain-labels' : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
+      data-testid="canvas-stage"
       ref={stageRef}
+      style={canvasAppearanceStyle}
     >
       <svg
         ref={svgRef}
@@ -956,6 +973,7 @@ export function FloorplanCanvas() {
             const className = [
               'canvas-annotation',
               `canvas-annotation--${annotation.kind}`,
+              !draft.showLabelShapes ? 'canvas-annotation--plain' : '',
               hovered ? 'hovered' : '',
               active || multiSelected ? 'active' : '',
             ]
@@ -2022,29 +2040,30 @@ function createAnnotationRect(anchor: ScreenPoint, widthPx: number, heightPx: nu
   return makeCenteredRect(anchor.x, anchor.y, widthPx, heightPx)
 }
 
-function estimateAnnotationSize(kind: AnnotationKind, text: string) {
+function estimateAnnotationSize(kind: AnnotationKind, text: string, labelFontSize: number) {
   const characters = countGraphemes(text)
+  const scale = labelFontSize / DEFAULT_LABEL_FONT_SIZE
 
   switch (kind) {
     case 'floor':
       return {
-        widthPx: Math.min(220, Math.max(92, characters * 8.2 + 24)),
-        heightPx: 26,
+        widthPx: Math.min(220 * scale, Math.max(92 * scale, (characters * 8.2 + 24) * scale)),
+        heightPx: 26 * scale,
       }
     case 'room':
       return {
-        widthPx: Math.min(260, Math.max(92, characters * 9.1 + 28)),
-        heightPx: 30,
+        widthPx: Math.min(260 * scale, Math.max(92 * scale, (characters * 9.1 + 28) * scale)),
+        heightPx: 30 * scale,
       }
     case 'furniture':
       return {
-        widthPx: Math.min(212, Math.max(78, characters * 8 + 24)),
-        heightPx: 26,
+        widthPx: Math.min(212 * scale, Math.max(78 * scale, (characters * 8 + 24) * scale)),
+        heightPx: 26 * scale,
       }
     case 'wall':
       return {
-        widthPx: Math.min(172, Math.max(108, characters * 8.1 + 58)),
-        heightPx: 28,
+        widthPx: Math.min(172 * scale, Math.max(108 * scale, (characters * 8.1 + 58) * scale)),
+        heightPx: 28 * scale,
       }
   }
 }
@@ -2125,6 +2144,7 @@ function buildCanvasAnnotations({
   showRoomFloorLabels,
   showFurnitureLabels,
   showWallLabels,
+  labelFontSize,
   reservedRects,
   hoveredTarget,
   focusedTarget,
@@ -2144,6 +2164,7 @@ function buildCanvasAnnotations({
   showRoomFloorLabels: boolean
   showFurnitureLabels: boolean
   showWallLabels: boolean
+  labelFontSize: number
   reservedRects: CanvasRect[]
   hoveredTarget: CanvasTarget | null
   focusedTarget: CanvasTarget | null
@@ -2200,7 +2221,7 @@ function buildCanvasAnnotations({
 
     const floorBounds = computeFloorBounds(floor)
     const floorAnchor = worldToScreenPoint({ x: floorBounds.minX + 1, y: floorBounds.maxY + 1.6 }, viewBox, canvasMetrics)
-    const floorSize = estimateAnnotationSize('floor', floor.name)
+    const floorSize = estimateAnnotationSize('floor', floor.name, labelFontSize)
     const floorTarget: CanvasTarget = {
       kind: 'floor',
       structureId: activeStructureId,
@@ -2224,7 +2245,7 @@ function buildCanvasAnnotations({
 
     floor.rooms.forEach((room) => {
       const roomAnchor = worldToScreenPoint(getRoomLabelPoint(room), viewBox, canvasMetrics)
-      const roomSize = estimateAnnotationSize('room', room.name)
+      const roomSize = estimateAnnotationSize('room', room.name, labelFontSize)
       const roomTarget: CanvasTarget = {
         kind: 'room',
         structureId: activeStructureId,
@@ -2259,7 +2280,7 @@ function buildCanvasAnnotations({
           viewBox,
           canvasMetrics,
         )
-        const furnitureSize = estimateAnnotationSize('furniture', item.name)
+        const furnitureSize = estimateAnnotationSize('furniture', item.name, labelFontSize)
         const furnitureTarget: CanvasTarget = {
           kind: 'furniture',
           structureId: activeStructureId,
@@ -2296,7 +2317,7 @@ function buildCanvasAnnotations({
         roomId: selectedRoomId,
         segmentId: segment.id,
       }
-      const wallSize = estimateAnnotationSize('wall', formatFeet(segment.length))
+      const wallSize = estimateAnnotationSize('wall', formatFeet(segment.length), labelFontSize)
       const wallSelected = isTargetSelected(selectionTargets, wallTarget)
       const wallFocused = matchesTarget(focusedTarget, wallTarget)
       const wallEditing = editingWallSegmentId === segment.id

@@ -25,6 +25,13 @@ import {
 } from './geometry'
 
 export const STORAGE_KEY = 'incremental-blueprint/v1'
+export const MIN_WALL_STROKE_SCALE = 0.6
+export const MAX_WALL_STROKE_SCALE = 2.2
+export const DEFAULT_WALL_STROKE_SCALE = 1
+export const MIN_LABEL_FONT_SIZE = 10
+export const MAX_LABEL_FONT_SIZE = 18
+export const DEFAULT_LABEL_FONT_SIZE = 12.5
+export const DEFAULT_SHOW_LABEL_SHAPES = true
 
 export function makeId(prefix: string) {
   return `${prefix}-${Math.random().toString(36).slice(2, 9)}`
@@ -98,15 +105,7 @@ export function createStructure(partial?: Partial<Structure>): Structure {
 }
 
 export function ensureSelections(state: DraftState): DraftState {
-  if (typeof state.showRoomFloorLabels !== 'boolean') {
-    state.showRoomFloorLabels = true
-  }
-  if (typeof state.showWallLabels !== 'boolean') {
-    state.showWallLabels = true
-  }
-  if (typeof state.showAngleLabels !== 'boolean') {
-    state.showAngleLabels = true
-  }
+  normalizeDraftCanvasSettings(state)
 
   if (state.structures.length === 0) {
     const structure = createStructure()
@@ -247,7 +246,32 @@ export function selectTargetInDraft(state: DraftState, target: CanvasTarget) {
       }
       if (target.floorId) {
         state.activeFloorId = target.floorId
-      }
+    }
+  }
+}
+
+export function normalizeDraftCanvasSettings(state: DraftState) {
+  if (typeof state.showRoomFloorLabels !== 'boolean') {
+    state.showRoomFloorLabels = true
+  }
+  if (typeof state.showWallLabels !== 'boolean') {
+    state.showWallLabels = true
+  }
+  if (typeof state.showAngleLabels !== 'boolean') {
+    state.showAngleLabels = true
+  }
+  if (typeof state.wallStrokeScale !== 'number' || !Number.isFinite(state.wallStrokeScale)) {
+    state.wallStrokeScale = DEFAULT_WALL_STROKE_SCALE
+  } else {
+    state.wallStrokeScale = clampNumber(state.wallStrokeScale, MIN_WALL_STROKE_SCALE, MAX_WALL_STROKE_SCALE)
+  }
+  if (typeof state.labelFontSize !== 'number' || !Number.isFinite(state.labelFontSize)) {
+    state.labelFontSize = DEFAULT_LABEL_FONT_SIZE
+  } else {
+    state.labelFontSize = clampNumber(state.labelFontSize, MIN_LABEL_FONT_SIZE, MAX_LABEL_FONT_SIZE)
+  }
+  if (typeof state.showLabelShapes !== 'boolean') {
+    state.showLabelShapes = DEFAULT_SHOW_LABEL_SHAPES
   }
 }
 
@@ -658,4 +682,8 @@ export function loadDraftState() {
 
 export function saveDraftState(state: DraftState) {
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+}
+
+function clampNumber(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value))
 }

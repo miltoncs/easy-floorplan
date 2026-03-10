@@ -64,6 +64,9 @@ export type DraftState = {
   showRoomFloorLabels: boolean
   showWallLabels: boolean
   showAngleLabels: boolean
+  wallStrokeScale: number
+  labelFontSize: number
+  showLabelShapes: boolean
 }
 
 export type EntityIds = {

@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { createSeedState } from '../data/seed'
 import {
+  DEFAULT_LABEL_FONT_SIZE,
+  DEFAULT_SHOW_LABEL_SHAPES,
+  DEFAULT_WALL_STROKE_SCALE,
+} from './blueprint'
+import {
   createStructureExportEnvelope,
   createWorkspaceExportEnvelope,
   normalizeImportedJson,
@@ -24,12 +29,18 @@ describe('serialization', () => {
     const legacyDraft = structuredClone(draft) as Record<string, unknown>
     delete legacyDraft.showWallLabels
     delete legacyDraft.showAngleLabels
+    delete legacyDraft.wallStrokeScale
+    delete legacyDraft.labelFontSize
+    delete legacyDraft.showLabelShapes
     const workspaceImport = normalizeImportedJson(legacyDraft)
     const structureImport = normalizeImportedJson(draft.structures[0])
 
     expect(workspaceImport.kind).toBe('workspace')
     expect(workspaceImport.kind === 'workspace' ? workspaceImport.draft.showWallLabels : null).toBe(true)
     expect(workspaceImport.kind === 'workspace' ? workspaceImport.draft.showAngleLabels : null).toBe(true)
+    expect(workspaceImport.kind === 'workspace' ? workspaceImport.draft.wallStrokeScale : null).toBe(DEFAULT_WALL_STROKE_SCALE)
+    expect(workspaceImport.kind === 'workspace' ? workspaceImport.draft.labelFontSize : null).toBe(DEFAULT_LABEL_FONT_SIZE)
+    expect(workspaceImport.kind === 'workspace' ? workspaceImport.draft.showLabelShapes : null).toBe(DEFAULT_SHOW_LABEL_SHAPES)
     expect(structureImport.kind).toBe('structure')
   })
 

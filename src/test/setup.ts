@@ -22,6 +22,11 @@ Object.defineProperty(window, 'localStorage', {
   writable: true,
 })
 
+Object.defineProperty(window, 'scrollTo', {
+  value: () => undefined,
+  writable: true,
+})
+
 beforeEach(() => {
   window.localStorage.clear()
 })

@@ -4,6 +4,12 @@ import './App.css'
 import { CanvasContextMenu } from './components/CanvasContextMenu'
 import { EditorDialogs } from './components/EditorDialogs'
 import { EditorProvider, useEditor } from './context/EditorContext'
+import {
+  MAX_LABEL_FONT_SIZE,
+  MAX_WALL_STROKE_SCALE,
+  MIN_LABEL_FONT_SIZE,
+  MIN_WALL_STROKE_SCALE,
+} from './lib/blueprint'
 import { DataPage } from './pages/DataPage'
 import { DetailPage } from './pages/DetailPage'
 import { WorkspaceHeaderControls, WorkspacePage } from './pages/WorkspacePage'
@@ -147,6 +153,8 @@ function AppSettingsDialog({
   onClose: () => void
   onOpenData: () => void
 }) {
+  const { draft, actions } = useEditor()
+
   return (
     <div className="dialog-backdrop" onClick={(event) => event.target === event.currentTarget && onClose()}>
       <div aria-modal="true" className="dialog-card app-settings-dialog" role="dialog">
@@ -162,6 +170,53 @@ function AppSettingsDialog({
         </div>
 
         <div className="app-settings-grid">
+          <section className="app-settings-section">
+            <p className="panel-kicker">Canvas</p>
+            <h3>Appearance</h3>
+            <p>Tune the drawing weight and label treatment without changing the underlying room geometry.</p>
+            <div className="settings-controls">
+              <label className="settings-slider">
+                <span>Wall line width</span>
+                <strong>{Math.round(draft.wallStrokeScale * 100)}%</strong>
+                <input
+                  aria-label="Wall line width"
+                  className="settings-slider__input"
+                  max={Math.round(MAX_WALL_STROKE_SCALE * 100)}
+                  min={Math.round(MIN_WALL_STROKE_SCALE * 100)}
+                  onChange={(event) => actions.setWallStrokeScale(Number(event.target.value) / 100)}
+                  step={10}
+                  type="range"
+                  value={Math.round(draft.wallStrokeScale * 100)}
+                />
+              </label>
+
+              <label className="settings-slider">
+                <span>Label font size</span>
+                <strong>{formatSettingNumber(draft.labelFontSize)} px</strong>
+                <input
+                  aria-label="Label font size"
+                  className="settings-slider__input"
+                  max={MAX_LABEL_FONT_SIZE}
+                  min={MIN_LABEL_FONT_SIZE}
+                  onChange={(event) => actions.setLabelFontSize(Number(event.target.value))}
+                  step={0.5}
+                  type="range"
+                  value={draft.labelFontSize}
+                />
+              </label>
+
+              <label className="toggle settings-toggle">
+                <input
+                  aria-label="Show label shapes"
+                  checked={draft.showLabelShapes}
+                  onChange={(event) => actions.toggleLabelShapes(event.target.checked)}
+                  type="checkbox"
+                />
+                <span>Show label shapes</span>
+              </label>
+            </div>
+          </section>
+
           <section className="app-settings-section">
             <p className="panel-kicker">Storage</p>
             <h3>Local-first workspace</h3>
@@ -198,6 +253,10 @@ function AppSettingsDialog({
       </div>
     </div>
   )
+}
+
+function formatSettingNumber(value: number) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1)
 }
 
 export default App

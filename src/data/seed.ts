@@ -1,5 +1,14 @@
 import type { DraftState } from '../types'
-import { createFloor, createFurniture, createRoom, createSegment, createStructure } from '../lib/blueprint'
+import {
+  DEFAULT_LABEL_FONT_SIZE,
+  DEFAULT_SHOW_LABEL_SHAPES,
+  DEFAULT_WALL_STROKE_SCALE,
+  createFloor,
+  createFurniture,
+  createRoom,
+  createSegment,
+  createStructure,
+} from '../lib/blueprint'
 
 export function createSeedState(): DraftState {
   const firstFloor = createFloor({
@@ -100,5 +109,8 @@ export function createSeedState(): DraftState {
     showRoomFloorLabels: true,
     showWallLabels: true,
     showAngleLabels: true,
+    wallStrokeScale: DEFAULT_WALL_STROKE_SCALE,
+    labelFontSize: DEFAULT_LABEL_FONT_SIZE,
+    showLabelShapes: DEFAULT_SHOW_LABEL_SHAPES,
   }
 }

@@ -5,7 +5,7 @@ import type {
   StructureExportEnvelope,
   WorkspaceExportEnvelope,
 } from '../types'
-import { createStructure, nowIso } from './blueprint'
+import { createStructure, normalizeDraftCanvasSettings, nowIso } from './blueprint'
 import { validateName } from './nameValidation'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -149,20 +149,15 @@ function isDraftStateLike(value: unknown): value is DraftState {
     typeof value.showInferred === 'boolean' &&
     (!('showRoomFloorLabels' in value) || typeof value.showRoomFloorLabels === 'boolean') &&
     (!('showWallLabels' in value) || typeof value.showWallLabels === 'boolean') &&
-    (!('showAngleLabels' in value) || typeof value.showAngleLabels === 'boolean')
+    (!('showAngleLabels' in value) || typeof value.showAngleLabels === 'boolean') &&
+    (!('wallStrokeScale' in value) || typeof value.wallStrokeScale === 'number') &&
+    (!('labelFontSize' in value) || typeof value.labelFontSize === 'number') &&
+    (!('showLabelShapes' in value) || typeof value.showLabelShapes === 'boolean')
   )
 }
 
 function normalizeDraftDisplayOptions(draft: DraftState) {
-  if (typeof draft.showRoomFloorLabels !== 'boolean') {
-    ;(draft as DraftState & { showRoomFloorLabels?: boolean }).showRoomFloorLabels = true
-  }
-  if (typeof draft.showWallLabels !== 'boolean') {
-    ;(draft as DraftState & { showWallLabels?: boolean }).showWallLabels = true
-  }
-  if (typeof draft.showAngleLabels !== 'boolean') {
-    ;(draft as DraftState & { showAngleLabels?: boolean }).showAngleLabels = true
-  }
+  normalizeDraftCanvasSettings(draft)
 }
 
 function isStructureLike(value: unknown): value is Structure {

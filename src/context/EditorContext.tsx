@@ -11,6 +11,10 @@ import {
 } from 'react'
 import { createSeedState } from '../data/seed'
 import {
+  MAX_LABEL_FONT_SIZE,
+  MAX_WALL_STROKE_SCALE,
+  MIN_LABEL_FONT_SIZE,
+  MIN_WALL_STROKE_SCALE,
   cloneImportedStructure,
   computeFloorBounds,
   computeVisibleBounds,
@@ -868,6 +872,27 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
       mutateDraft(
         (draft) => {
           draft.showAngleLabels = checked
+        },
+        { touchStructure: false, recordHistory: false },
+      ),
+    setWallStrokeScale: (value: number) =>
+      mutateDraft(
+        (draft) => {
+          draft.wallStrokeScale = clamp(value, MIN_WALL_STROKE_SCALE, MAX_WALL_STROKE_SCALE)
+        },
+        { touchStructure: false, recordHistory: false },
+      ),
+    setLabelFontSize: (value: number) =>
+      mutateDraft(
+        (draft) => {
+          draft.labelFontSize = clamp(value, MIN_LABEL_FONT_SIZE, MAX_LABEL_FONT_SIZE)
+        },
+        { touchStructure: false, recordHistory: false },
+      ),
+    toggleLabelShapes: (checked: boolean) =>
+      mutateDraft(
+        (draft) => {
+          draft.showLabelShapes = checked
         },
         { touchStructure: false, recordHistory: false },
       ),
