@@ -340,6 +340,23 @@ describe('workspace interactions', () => {
     expect(screen.queryAllByRole('button', { name: 'Apply' })).toHaveLength(initialCount - 1)
   })
 
+  it('lets the drawing hint be dismissed permanently', async () => {
+    const user = userEvent.setup()
+    const draft = createSeedState()
+    const firstRender = renderEditor({ draft })
+
+    expect(screen.getByTestId('drawing-tip')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Dismiss drawing tip' }))
+
+    expect(screen.queryByTestId('drawing-tip')).not.toBeInTheDocument()
+
+    firstRender.unmount()
+    renderEditor({ draft: createSeedState() })
+
+    expect(screen.queryByTestId('drawing-tip')).not.toBeInTheDocument()
+  })
+
   it('shows the grid legend using whole-foot sizing', () => {
     const draft = createSeedState()
 
