@@ -10,6 +10,42 @@ const MODE_LABELS = {
   stacked: 'Stacked',
 } as const
 
+export function WorkspaceHeaderControls() {
+  const { draft, actions } = useEditor()
+
+  return (
+    <>
+      <div className="mode-switch compact">
+        {Object.entries(MODE_LABELS).map(([mode, label]) => (
+          <button
+            key={mode}
+            className={draft.editorMode === mode ? 'mode-pill active' : 'mode-pill'}
+            onClick={() => actions.setEditorMode(mode as keyof typeof MODE_LABELS)}
+            type="button"
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div className="workspace-toolbar-group">
+        <button className="ghost-button small" onClick={() => actions.addStructure()} type="button">
+          Add structure
+        </button>
+        <button className="ghost-button small" onClick={() => actions.addFloor()} type="button">
+          Add floor
+        </button>
+        <button className="ghost-button small" onClick={() => actions.addRoom()} type="button">
+          Add room
+        </button>
+        <button className="ghost-button small" onClick={() => actions.addFurniture()} type="button">
+          Add furniture
+        </button>
+      </div>
+    </>
+  )
+}
+
 export function WorkspacePage() {
   const {
     activeFloor,
@@ -38,36 +74,6 @@ export function WorkspacePage() {
 
   return (
     <section className="workspace-page">
-      <div className="workspace-toolbar panel-card">
-        <div className="mode-switch compact">
-          {Object.entries(MODE_LABELS).map(([mode, label]) => (
-            <button
-              key={mode}
-              className={draft.editorMode === mode ? 'mode-pill active' : 'mode-pill'}
-              onClick={() => actions.setEditorMode(mode as keyof typeof MODE_LABELS)}
-              type="button"
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
-        <div className="workspace-toolbar-group">
-          <button className="ghost-button small" onClick={() => actions.addStructure()} type="button">
-            Add structure
-          </button>
-          <button className="ghost-button small" onClick={() => actions.addFloor()} type="button">
-            Add floor
-          </button>
-          <button className="ghost-button small" onClick={() => actions.addRoom()} type="button">
-            Add room
-          </button>
-          <button className="ghost-button small" onClick={() => actions.addFurniture()} type="button">
-            Add furniture
-          </button>
-        </div>
-      </div>
-
       <div className="workspace-grid">
         <div className="workspace-canvas panel-card">
           <FloorplanCanvas />

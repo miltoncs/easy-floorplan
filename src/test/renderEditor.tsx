@@ -6,7 +6,7 @@ import { EditorDialogs } from '../components/EditorDialogs'
 import { createSeedState } from '../data/seed'
 import { DataPage } from '../pages/DataPage'
 import { DetailPage } from '../pages/DetailPage'
-import { WorkspacePage } from '../pages/WorkspacePage'
+import { WorkspaceHeaderControls, WorkspacePage } from '../pages/WorkspacePage'
 import type { DraftState } from '../types'
 
 export function renderEditor(options?: {
@@ -20,7 +20,15 @@ export function renderEditor(options?: {
     <MemoryRouter initialEntries={[initialPath]}>
       <EditorProvider initialDraft={draft}>
         <Routes>
-          <Route element={<WorkspacePage />} path="/workspace" />
+          <Route
+            element={
+              <>
+                <WorkspaceHeaderControls />
+                <WorkspacePage />
+              </>
+            }
+            path="/workspace"
+          />
           <Route element={<DetailPage />} path="/detail" />
           <Route element={<DataPage />} path="/data" />
         </Routes>

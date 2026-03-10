@@ -24,23 +24,34 @@
 
 .app-header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  align-items: center;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
   gap: 1rem;
   padding: 1rem 1.2rem;
   border-radius: var(--radius-panel);
 }
 
-.brand-block h1,
+.app-header-main {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem 1.2rem;
+}
+
+.app-header-workspace {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.7rem 1rem;
+}
+
 .section-heading h2,
 .dialog-header h2 {
   margin: 0;
-}
-
-.brand-block h1 {
-  font-family: 'Libre Caslon Display', serif;
-  letter-spacing: -0.05em;
-  font-size: clamp(1.6rem, 2vw, 2.2rem);
 }
 
 .section-heading h2,
@@ -51,7 +62,6 @@
   font-weight: 700;
 }
 
-.eyebrow,
 .panel-kicker,
 .floor-tag,
 .dimension-chip text {
@@ -60,7 +70,6 @@
   text-transform: uppercase;
 }
 
-.eyebrow,
 .panel-kicker {
   margin: 0 0 0.3rem;
   font-size: 0.7rem;
@@ -383,7 +392,8 @@
 
 .workspace-page {
   height: 100%;
-  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  grid-template-rows: minmax(0, 1fr);
   overflow: hidden;
 }
 
@@ -1609,6 +1619,11 @@ code {
   .data-grid,
   .app-header {
     grid-template-columns: 1fr;
+  }
+
+  .app-header-main,
+  .app-header-workspace {
+    justify-content: flex-start;
   }
 }
 

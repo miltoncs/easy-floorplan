@@ -6,7 +6,7 @@ import { EditorDialogs } from './components/EditorDialogs'
 import { EditorProvider, useEditor } from './context/EditorContext'
 import { DataPage } from './pages/DataPage'
 import { DetailPage } from './pages/DetailPage'
-import { WorkspacePage } from './pages/WorkspacePage'
+import { WorkspaceHeaderControls, WorkspacePage } from './pages/WorkspacePage'
 
 function App() {
   return (
@@ -25,6 +25,7 @@ function AppShell() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement | null>(null)
+  const isWorkspaceRoute = location.pathname === '/workspace'
 
   useLayoutEffect(() => {
     window.scrollTo(0, 0)
@@ -48,22 +49,25 @@ function AppShell() {
   return (
     <div className="app-shell">
       <header className="app-header">
-        <div className="brand-block">
-          <p className="eyebrow">Incremental Blueprint</p>
-          <h1>Canvas-first survey editor</h1>
-        </div>
+        <div className="app-header-main">
+          <nav aria-label="Primary" className="primary-nav">
+            <NavLink className={({ isActive }) => (isActive ? 'nav-pill active' : 'nav-pill')} to="/workspace">
+              Workspace
+            </NavLink>
+            <NavLink className={({ isActive }) => (isActive ? 'nav-pill active' : 'nav-pill')} to="/detail">
+              Detail
+            </NavLink>
+            <NavLink className={({ isActive }) => (isActive ? 'nav-pill active' : 'nav-pill')} to="/data">
+              Data
+            </NavLink>
+          </nav>
 
-        <nav aria-label="Primary" className="primary-nav">
-          <NavLink className={({ isActive }) => (isActive ? 'nav-pill active' : 'nav-pill')} to="/workspace">
-            Workspace
-          </NavLink>
-          <NavLink className={({ isActive }) => (isActive ? 'nav-pill active' : 'nav-pill')} to="/detail">
-            Detail
-          </NavLink>
-          <NavLink className={({ isActive }) => (isActive ? 'nav-pill active' : 'nav-pill')} to="/data">
-            Data
-          </NavLink>
-        </nav>
+          {isWorkspaceRoute ? (
+            <div className="app-header-workspace">
+              <WorkspaceHeaderControls />
+            </div>
+          ) : null}
+        </div>
 
         <div className="app-header-actions" ref={menuRef}>
           <button
