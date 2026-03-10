@@ -36,7 +36,7 @@ describe('workspace interactions', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save wall' }))
     await waitFor(() => expect(screen.getByTestId(`wall-label-${firstWall.id}`)).toHaveTextContent(`12' 3"`))
 
-    fireEvent.click(screen.getByTestId(`corner-label-${firstWall.id}`))
+    fireEvent.click(screen.getByTestId(`corner-hit-${firstWall.id}`))
     const cornerDialog = screen.getByRole('dialog')
     expect(cornerDialog).toHaveTextContent('Edit corner angle')
     expect(screen.getByRole('spinbutton', { name: 'Angle (deg)' })).toHaveValue(90)
@@ -213,28 +213,37 @@ describe('workspace interactions', () => {
 
     renderEditor({ draft })
 
-    expect(screen.getByTestId(`corner-label-${firstCorner.id}`)).toBeInTheDocument()
+    expect(screen.getByTestId(`corner-hover-overlay-${firstCorner.id}`)).toBeInTheDocument()
 
     await user.click(screen.getByRole('checkbox', { name: 'Angles' }))
-
-    expect(screen.queryByTestId(`corner-label-${firstCorner.id}`)).not.toBeInTheDocument()
-
-    await user.click(screen.getByRole('checkbox', { name: 'Angles' }))
-
-    expect(screen.getByTestId(`corner-label-${firstCorner.id}`)).toBeInTheDocument()
-  })
-
-  it('shows an internal angle hover overlay at the corner junction', () => {
-    const draft = createSeedState()
-    const firstCorner = draft.structures[0].floors[0].rooms[0].segments[0]
-
-    renderEditor({ draft })
 
     expect(screen.queryByTestId(`corner-hover-overlay-${firstCorner.id}`)).not.toBeInTheDocument()
 
     fireEvent.mouseEnter(screen.getByTestId(`corner-hit-${firstCorner.id}`))
 
+    expect(screen.getByTestId(`corner-hover-overlay-${firstCorner.id}`)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('checkbox', { name: 'Angles' }))
+
+    expect(screen.getByTestId(`corner-hover-overlay-${firstCorner.id}`)).toBeInTheDocument()
+  })
+
+  it('shows an internal angle hover overlay at the corner junction', () => {
+    const draft = createSeedState()
+    const firstCorner = draft.structures[0].floors[0].rooms[0].segments[0]
+    draft.showAngleLabels = false
+
+    renderEditor({ draft })
+
+    expect(screen.queryByTestId(`corner-hover-overlay-${firstCorner.id}`)).not.toBeInTheDocument()
+
+    const cornerHit = screen.getByTestId(`corner-hit-${firstCorner.id}`)
+
+    fireEvent.mouseEnter(cornerHit)
+
     expect(screen.getByTestId(`corner-hover-overlay-${firstCorner.id}`)).toHaveTextContent('90°')
+    expect(screen.getByTestId(`corner-hover-arc-${firstCorner.id}`)).toBeInTheDocument()
+    expect(cornerHit).not.toHaveClass('hovered')
   })
 
   it('toggles canvas wall distance labels', async () => {
@@ -405,7 +414,7 @@ describe('workspace interactions', () => {
     expect(screen.getByRole('menu')).toHaveTextContent('Edit wall measurements')
     fireEvent.pointerDown(document.body)
 
-    fireEvent.contextMenu(screen.getByTestId(`corner-label-${wall.id}`))
+    fireEvent.contextMenu(screen.getByTestId(`corner-hit-${wall.id}`))
     expect(screen.getByRole('menu')).toHaveTextContent('Edit corner angle')
     fireEvent.pointerDown(document.body)
 
@@ -469,7 +478,7 @@ describe('workspace interactions', () => {
 
     renderEditor({ draft })
 
-    fireEvent.click(screen.getByTestId('corner-label-seg-b'))
+    fireEvent.click(screen.getByTestId('corner-hit-seg-b'))
     expect(screen.getByRole('dialog')).toHaveTextContent('Edit corner angle')
 
     await user.selectOptions(screen.getByRole('combobox', { name: 'Turn direction' }), 'right')

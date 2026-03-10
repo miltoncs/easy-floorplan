@@ -777,10 +777,6 @@
   cursor: pointer;
 }
 
-.corner-hit.hovered {
-  fill: rgba(17, 17, 17, 0.06);
-}
-
 .canvas-key {
   position: absolute;
   left: 1rem;
@@ -848,34 +844,28 @@
   pointer-events: none;
 }
 
-.canvas-corner-hover-marker {
+.canvas-corner-hover-svg {
   position: absolute;
-  transform: translate(-50%, -50%);
-  inline-size: 2.25rem;
-  block-size: 2.25rem;
-  border-radius: 999px;
-  border: 4px solid rgba(17, 17, 17, 0.78);
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 10px 24px rgba(17, 17, 17, 0.12);
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  overflow: visible;
 }
 
-.canvas-corner-hover-marker span {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  border-radius: 999px;
-  background: rgba(17, 17, 17, 0.78);
-  transform: translate(-50%, -50%);
+.canvas-corner-hover-arc-shadow,
+.canvas-corner-hover-arc {
+  fill: none;
+  stroke-linecap: round;
 }
 
-.canvas-corner-hover-marker span:first-child {
-  inline-size: 1rem;
-  block-size: 0.22rem;
+.canvas-corner-hover-arc-shadow {
+  stroke: rgba(255, 255, 255, 0.92);
+  stroke-width: 7px;
 }
 
-.canvas-corner-hover-marker span:last-child {
-  inline-size: 0.22rem;
-  block-size: 1rem;
+.canvas-corner-hover-arc {
+  stroke: rgba(17, 17, 17, 0.78);
+  stroke-width: 2.5px;
 }
 
 .canvas-corner-hover-label {
@@ -1084,18 +1074,6 @@
 .canvas-wall-chip__input::-webkit-outer-spin-button,
 .canvas-wall-chip__input::-webkit-inner-spin-button {
   margin: 0;
-}
-
-.canvas-annotation--corner {
-  min-height: 1.48rem;
-  padding: 0.26rem 0.54rem;
-  border-style: dashed;
-  border-color: rgba(17, 17, 17, 0.18);
-  background: rgba(255, 255, 255, 0.94);
-  color: rgba(17, 17, 17, 0.72);
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 0.66rem;
-  letter-spacing: 0.04em;
 }
 
 .canvas-annotation.active {
@@ -1688,8 +1666,7 @@ code {
   }
 
   .canvas-annotation--floor,
-  .canvas-annotation--wall,
-  .canvas-annotation--corner {
+  .canvas-annotation--wall {
     font-size: 0.66rem;
   }
 

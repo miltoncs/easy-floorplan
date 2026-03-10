@@ -94,7 +94,7 @@ test('supports right-click menus across the 2D view and JSON round-trips', async
   await expect(page.getByRole('menu')).toContainText('Edit wall measurements')
   await page.mouse.click(10, 10)
 
-  await page.locator('[data-testid^="corner-label-"]').first().dispatchEvent('contextmenu')
+  await page.locator('[data-testid^="corner-hit-"]').first().dispatchEvent('contextmenu')
   await expect(page.getByRole('menu')).toContainText('Edit corner angle')
   await page.mouse.click(10, 10)
 

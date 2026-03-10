@@ -101,7 +101,7 @@ type PlacedSuggestionPreview = SuggestionPreview & {
   actionRect: CanvasRect
 }
 
-type AnnotationKind = 'floor' | 'room' | 'furniture' | 'wall' | 'corner'
+type AnnotationKind = 'floor' | 'room' | 'furniture' | 'wall'
 
 type CanvasAnnotation = {
   id: string
@@ -124,7 +124,7 @@ type PlacedCanvasAnnotation = CanvasAnnotation & {
 
 type HoverCornerOverlay = {
   target: Extract<CanvasTarget, { kind: 'corner' }>
-  point: ScreenPoint
+  arcPath: string
   labelPoint: ScreenPoint
   text: string
 }
@@ -209,7 +209,6 @@ export function FloorplanCanvas() {
     showRoomFloorLabels: draft.showRoomFloorLabels,
     showFurnitureLabels: draft.editorMode === 'furniture',
     showWallLabels: draft.showWallLabels && draft.editorMode !== 'furniture',
-    showCornerLabels: draft.showAngleLabels && draft.editorMode !== 'furniture',
     reservedRects: reservedAnnotationRects,
     hoveredTarget: ui.hoveredTarget,
     focusedTarget: ui.focusedTarget,
@@ -217,11 +216,12 @@ export function FloorplanCanvas() {
     editingWallSegmentId: inlineWallEditor?.segmentId ?? null,
     previousCandidateIndices: annotationPlacementRef.current,
   })
-  const hoveredCornerOverlay = getHoveredCornerOverlay({
+  const visibleCornerOverlays = getVisibleCornerOverlays({
     activeStructureId: activeStructure?.id,
     activeFloorId: activeFloor?.id ?? draft.activeFloorId,
     selectedRoom,
     selectedRoomGeometry,
+    showAll: draft.showAngleLabels && draft.editorMode !== 'furniture',
     hoveredTarget: ui.hoveredTarget,
     viewBox,
     canvasMetrics,
@@ -646,16 +646,15 @@ export function FloorplanCanvas() {
                 roomId: selectedRoom.id,
                 segmentId: corner.segmentId,
               }
-              const hovered = matchesTarget(ui.hoveredTarget, target)
 
               return (
                 <circle
                   key={`${corner.segmentId}-hit`}
-                  className={hovered ? 'corner-hit hovered' : 'corner-hit'}
+                  className="corner-hit"
                   cx={corner.point.x}
                   cy={-corner.point.y}
                   data-testid={`corner-hit-${corner.segmentId}`}
-                  r={0.6}
+                  r={0.95}
                   onClick={() => handleCornerClick(target)}
                   onContextMenu={(event) => openContextMenu(event, target)}
                   onMouseEnter={() => actions.setHoveredTarget(target)}
@@ -698,29 +697,32 @@ export function FloorplanCanvas() {
         />
       ) : null}
 
-      {hoveredCornerOverlay ? (
-        <div className="canvas-hover-layer" data-testid={`corner-hover-overlay-${hoveredCornerOverlay.target.segmentId}`}>
-          <div
-            className="canvas-corner-hover-marker"
-            style={{
-              left: `${hoveredCornerOverlay.point.x}px`,
-              top: `${hoveredCornerOverlay.point.y}px`,
-            }}
+      {visibleCornerOverlays.map((cornerOverlay) => (
+        <div className="canvas-hover-layer" data-testid={`corner-hover-overlay-${cornerOverlay.target.segmentId}`} key={cornerOverlay.target.segmentId}>
+          <svg
+            aria-hidden="true"
+            className="canvas-corner-hover-svg"
+            preserveAspectRatio="none"
+            viewBox={`0 0 ${canvasMetrics.widthPx} ${canvasMetrics.heightPx}`}
           >
-            <span />
-            <span />
-          </div>
+            <path className="canvas-corner-hover-arc-shadow" d={cornerOverlay.arcPath} />
+            <path
+              className="canvas-corner-hover-arc"
+              d={cornerOverlay.arcPath}
+              data-testid={`corner-hover-arc-${cornerOverlay.target.segmentId}`}
+            />
+          </svg>
           <div
             className="canvas-corner-hover-label"
             style={{
-              left: `${hoveredCornerOverlay.labelPoint.x}px`,
-              top: `${hoveredCornerOverlay.labelPoint.y}px`,
+              left: `${cornerOverlay.labelPoint.x}px`,
+              top: `${cornerOverlay.labelPoint.y}px`,
             }}
           >
-            {hoveredCornerOverlay.text}
+            {cornerOverlay.text}
           </div>
         </div>
-      ) : null}
+      ))}
 
       {activeStructure ? (
         <button
@@ -1933,11 +1935,6 @@ function estimateAnnotationSize(kind: AnnotationKind, text: string) {
         widthPx: Math.min(172, Math.max(108, characters * 8.1 + 58)),
         heightPx: 28,
       }
-    case 'corner':
-      return {
-        widthPx: Math.min(104, Math.max(62, characters * 7.6 + 20)),
-        heightPx: 26,
-      }
   }
 }
 
@@ -1964,81 +1961,44 @@ function buildWallAnnotationOffsets(start: ScreenPoint, end: ScreenPoint): Scree
   ]
 }
 
-function normalizeScreenVector(vector: ScreenPoint) {
-  const length = Math.hypot(vector.x, vector.y)
+function getScreenAngleDegrees(origin: ScreenPoint, point: ScreenPoint) {
+  return normalizeAngle((Math.atan2(point.y - origin.y, point.x - origin.x) * 180) / Math.PI)
+}
 
-  if (length <= 1e-6) {
-    return { x: 0, y: 0 }
-  }
+function getPointFromScreenAngle(origin: ScreenPoint, radius: number, angle: number): ScreenPoint {
+  const radians = (angle * Math.PI) / 180
 
   return {
-    x: vector.x / length,
-    y: vector.y / length,
+    x: origin.x + Math.cos(radians) * radius,
+    y: origin.y + Math.sin(radians) * radius,
   }
 }
 
-function buildCornerAnnotationOffsets({
+function buildCornerHoverArc({
   corner,
   incomingStart,
   outgoingEnd,
 }: {
   corner: ScreenPoint
   incomingStart: ScreenPoint
-  outgoingEnd: ScreenPoint | null
-}): ScreenPoint[] {
-  const incoming = normalizeScreenVector({
-    x: incomingStart.x - corner.x,
-    y: incomingStart.y - corner.y,
-  })
-
-  if (!outgoingEnd) {
-    const normal = { x: -incoming.y, y: incoming.x }
-
-    return [
-      { x: normal.x * 26, y: normal.y * 26 },
-      { x: -normal.x * 26, y: -normal.y * 26 },
-      { x: incoming.x * 30, y: incoming.y * 30 },
-      { x: normal.x * 38 + incoming.x * 16, y: normal.y * 38 + incoming.y * 16 },
-      { x: -normal.x * 38 + incoming.x * 16, y: -normal.y * 38 + incoming.y * 16 },
-    ]
-  }
-
-  const outgoing = normalizeScreenVector({
-    x: outgoingEnd.x - corner.x,
-    y: outgoingEnd.y - corner.y,
-  })
-  const bisector = normalizeScreenVector({
-    x: incoming.x + outgoing.x,
-    y: incoming.y + outgoing.y,
-  })
-  const fallback = { x: -incoming.y, y: incoming.x }
-  const primary = Math.hypot(bisector.x, bisector.y) > 0 ? bisector : fallback
-  const opposite = { x: -primary.x, y: -primary.y }
-
-  return [
-    { x: primary.x * 26, y: primary.y * 26 },
-    { x: opposite.x * 26, y: opposite.y * 26 },
-    { x: primary.x * 38 + fallback.x * 14, y: primary.y * 38 + fallback.y * 14 },
-    { x: primary.x * 38 - fallback.x * 14, y: primary.y * 38 - fallback.y * 14 },
-    { x: opposite.x * 38 + fallback.x * 14, y: opposite.y * 38 + fallback.y * 14 },
-    { x: opposite.x * 38 - fallback.x * 14, y: opposite.y * 38 - fallback.y * 14 },
-  ]
-}
-
-function getCornerHoverOffset({
-  corner,
-  incomingStart,
-  outgoingEnd,
-}: {
-  corner: ScreenPoint
-  incomingStart: ScreenPoint
-  outgoingEnd: ScreenPoint | null
+  outgoingEnd: ScreenPoint
 }) {
-  return buildCornerAnnotationOffsets({
-    corner,
-    incomingStart,
-    outgoingEnd,
-  })[0] ?? { x: 0, y: -30 }
+  const incomingLength = Math.hypot(incomingStart.x - corner.x, incomingStart.y - corner.y)
+  const outgoingLength = Math.hypot(outgoingEnd.x - corner.x, outgoingEnd.y - corner.y)
+  const radius = clamp(Math.min(incomingLength, outgoingLength) * 0.28, 10, 28)
+  const startAngle = getScreenAngleDegrees(corner, incomingStart)
+  const endAngle = getScreenAngleDegrees(corner, outgoingEnd)
+  const clockwiseDelta = normalizeAngle(endAngle - startAngle)
+  const sweepClockwise = clockwiseDelta <= 180
+  const arcDegrees = sweepClockwise ? clockwiseDelta : 360 - clockwiseDelta
+  const midAngle = normalizeAngle(startAngle + (sweepClockwise ? 1 : -1) * arcDegrees * 0.5)
+  const start = getPointFromScreenAngle(corner, radius, startAngle)
+  const end = getPointFromScreenAngle(corner, radius, endAngle)
+
+  return {
+    arcPath: `M ${start.x} ${start.y} A ${radius} ${radius} 0 0 ${sweepClockwise ? 1 : 0} ${end.x} ${end.y}`,
+    labelPoint: getPointFromScreenAngle(corner, radius + 18, midAngle),
+  }
 }
 
 function buildCanvasAnnotations({
@@ -2054,7 +2014,6 @@ function buildCanvasAnnotations({
   showRoomFloorLabels,
   showFurnitureLabels,
   showWallLabels,
-  showCornerLabels,
   reservedRects,
   hoveredTarget,
   focusedTarget,
@@ -2074,7 +2033,6 @@ function buildCanvasAnnotations({
   showRoomFloorLabels: boolean
   showFurnitureLabels: boolean
   showWallLabels: boolean
-  showCornerLabels: boolean
   reservedRects: CanvasRect[]
   hoveredTarget: CanvasTarget | null
   focusedTarget: CanvasTarget | null
@@ -2246,43 +2204,6 @@ function buildCanvasAnnotations({
         candidateOffsets: buildWallAnnotationOffsets(start, end),
       })
     })
-
-    if (showCornerLabels) {
-      const corners = getRoomCorners(selectedRoom)
-
-      corners.forEach((corner, index) => {
-        const previousSegment = selectedRoomGeometry.segments[index]
-        const nextSegment = corner.isExit
-          ? null
-          : selectedRoomGeometry.segments[index + 1] ?? (selectedRoomGeometry.closed ? selectedRoomGeometry.segments[0] : null)
-        const cornerTarget: CanvasTarget = {
-          kind: 'corner',
-          structureId: activeStructureId,
-          floorId: activeFloorId,
-          roomId: selectedRoomId,
-          segmentId: corner.segmentId,
-        }
-        const anchor = worldToScreenPoint(corner.point, viewBox, canvasMetrics)
-        const text = formatCornerAngleBadge(corner.turn)
-        const cornerSize = estimateAnnotationSize('corner', text)
-
-        descriptors.push({
-          id: corner.segmentId,
-          kind: 'corner',
-          text,
-          target: cornerTarget,
-          anchor,
-          widthPx: cornerSize.widthPx,
-          heightPx: cornerSize.heightPx,
-          priority: matchesTarget(hoveredTarget, cornerTarget) ? 82 : 68,
-          candidateOffsets: buildCornerAnnotationOffsets({
-            corner: anchor,
-            incomingStart: worldToScreenPoint(previousSegment.start, viewBox, canvasMetrics),
-            outgoingEnd: nextSegment ? worldToScreenPoint(nextSegment.end, viewBox, canvasMetrics) : null,
-          }),
-        })
-      })
-    }
   }
 
   return placeCanvasAnnotations(descriptors, reservedRects, {
@@ -2293,12 +2214,12 @@ function buildCanvasAnnotations({
   }, previousCandidateIndices)
 }
 
-function getHoveredCornerOverlay({
+function buildCornerHoverOverlay({
   activeStructureId,
   activeFloorId,
   selectedRoom,
   selectedRoomGeometry,
-  hoveredTarget,
+  segmentId,
   viewBox,
   canvasMetrics,
 }: {
@@ -2306,24 +2227,16 @@ function getHoveredCornerOverlay({
   activeFloorId: string
   selectedRoom: Room | null
   selectedRoomGeometry: ReturnType<typeof roomToGeometry> | null
-  hoveredTarget: CanvasTarget | null
+  segmentId: string
   viewBox: { x: number; y: number; width: number; height: number }
   canvasMetrics: CanvasMetrics
 }): HoverCornerOverlay | null {
-  if (
-    !activeStructureId ||
-    !selectedRoom ||
-    !selectedRoomGeometry ||
-    !hoveredTarget ||
-    hoveredTarget.kind !== 'corner' ||
-    hoveredTarget.floorId !== activeFloorId ||
-    hoveredTarget.roomId !== selectedRoom.id
-  ) {
+  if (!activeStructureId || !selectedRoom || !selectedRoomGeometry) {
     return null
   }
 
   const corners = getRoomCorners(selectedRoom)
-  const cornerIndex = corners.findIndex((corner) => corner.segmentId === hoveredTarget.segmentId)
+  const cornerIndex = corners.findIndex((corner) => corner.segmentId === segmentId)
 
   if (cornerIndex < 0) {
     return null
@@ -2335,21 +2248,97 @@ function getHoveredCornerOverlay({
     ? null
     : selectedRoomGeometry.segments[cornerIndex + 1] ?? (selectedRoomGeometry.closed ? selectedRoomGeometry.segments[0] : null)
   const point = worldToScreenPoint(corner.point, viewBox, canvasMetrics)
-  const offset = getCornerHoverOffset({
+  const incomingStart = worldToScreenPoint(previousSegment.start, viewBox, canvasMetrics)
+  const outgoingEnd = nextSegment
+    ? worldToScreenPoint(nextSegment.end, viewBox, canvasMetrics)
+    : worldToScreenPoint(
+        addPolar(
+          corner.point,
+          clamp(previousSegment.length * 0.6, 2, 6),
+          normalizeAngle(previousSegment.heading + corner.turn),
+        ),
+        viewBox,
+        canvasMetrics,
+      )
+  const hoverArc = buildCornerHoverArc({
     corner: point,
-    incomingStart: worldToScreenPoint(previousSegment.start, viewBox, canvasMetrics),
-    outgoingEnd: nextSegment ? worldToScreenPoint(nextSegment.end, viewBox, canvasMetrics) : null,
+    incomingStart,
+    outgoingEnd,
   })
 
   return {
-    target: hoveredTarget,
-    point,
-    labelPoint: {
-      x: point.x + offset.x,
-      y: point.y + offset.y,
+    target: {
+      kind: 'corner',
+      structureId: activeStructureId,
+      floorId: activeFloorId,
+      roomId: selectedRoom.id,
+      segmentId,
     },
+    arcPath: hoverArc.arcPath,
+    labelPoint: hoverArc.labelPoint,
     text: formatCornerAngleBadge(corner.turn),
   }
+}
+
+function getVisibleCornerOverlays({
+  activeStructureId,
+  activeFloorId,
+  selectedRoom,
+  selectedRoomGeometry,
+  showAll,
+  hoveredTarget,
+  viewBox,
+  canvasMetrics,
+}: {
+  activeStructureId?: string
+  activeFloorId: string
+  selectedRoom: Room | null
+  selectedRoomGeometry: ReturnType<typeof roomToGeometry> | null
+  showAll: boolean
+  hoveredTarget: CanvasTarget | null
+  viewBox: { x: number; y: number; width: number; height: number }
+  canvasMetrics: CanvasMetrics
+}) {
+  if (!activeStructureId || !selectedRoom || !selectedRoomGeometry) {
+    return []
+  }
+
+  if (showAll) {
+    return getRoomCorners(selectedRoom)
+      .map((corner) =>
+        buildCornerHoverOverlay({
+          activeStructureId,
+          activeFloorId,
+          selectedRoom,
+          selectedRoomGeometry,
+          segmentId: corner.segmentId,
+          viewBox,
+          canvasMetrics,
+        }),
+      )
+      .filter((overlay): overlay is HoverCornerOverlay => Boolean(overlay))
+  }
+
+  if (
+    !hoveredTarget ||
+    hoveredTarget.kind !== 'corner' ||
+    hoveredTarget.floorId !== activeFloorId ||
+    hoveredTarget.roomId !== selectedRoom.id
+  ) {
+    return []
+  }
+
+  const overlay = buildCornerHoverOverlay({
+    activeStructureId,
+    activeFloorId,
+    selectedRoom,
+    selectedRoomGeometry,
+    segmentId: hoveredTarget.segmentId,
+    viewBox,
+    canvasMetrics,
+  })
+
+  return overlay ? [overlay] : []
 }
 
 function placeCanvasAnnotations(
