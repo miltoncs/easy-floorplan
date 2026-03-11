@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { createFurniture, createRoom, createSegment } from './blueprint'
-import { getCornerAngleBetweenWalls, getTurnFromCornerAngle, snapFurnitureToRoom, validateRoomWalls } from './geometry'
+import {
+  deleteRoomSegmentPreservingGeometry,
+  getCornerAngleBetweenWalls,
+  getTurnFromCornerAngle,
+  roomToGeometry,
+  round,
+  snapFurnitureToRoom,
+  validateRoomWalls,
+} from './geometry'
 
 describe('validateRoomWalls', () => {
   it('allows a non-intersecting room outline', () => {
@@ -67,6 +75,84 @@ describe('validateRoomWalls', () => {
     expect(getTurnFromCornerAngle(180, 'left')).toBe(0)
     expect(getTurnFromCornerAngle(90, 'left')).toBe(90)
     expect(getTurnFromCornerAngle(135, 'right')).toBe(-45)
+  })
+
+  it('preserves closed-room wall geometry when deleting a wall', () => {
+    const room = createRoom({
+      anchor: { x: 0, y: 0 },
+      startHeading: 0,
+      segments: [
+        createSegment({ id: 'seg-a', label: 'A', length: 10, turn: 90 }),
+        createSegment({ id: 'seg-b', label: 'B', length: 8, turn: 90 }),
+        createSegment({ id: 'seg-c', label: 'C', length: 10, turn: 90 }),
+        createSegment({ id: 'seg-d', label: 'D', length: 8, turn: 90 }),
+      ],
+    })
+
+    const before = roomToGeometry(room)
+    const expectedById = Object.fromEntries(
+      before.segments
+        .filter((segment) => segment.id !== 'seg-a')
+        .map((segment) => [
+          segment.id,
+          {
+            heading: round(segment.heading, 4),
+            start: {
+              x: round(segment.start.x, 4),
+              y: round(segment.start.y, 4),
+            },
+            end: {
+              x: round(segment.end.x, 4),
+              y: round(segment.end.y, 4),
+            },
+          },
+        ]),
+    )
+
+    expect(deleteRoomSegmentPreservingGeometry(room, 'seg-a')).toEqual({
+      deleted: true,
+    })
+
+    const after = roomToGeometry(room)
+    const actualById = Object.fromEntries(
+      after.segments.map((segment) => [
+        segment.id,
+        {
+          heading: round(segment.heading, 4),
+          start: {
+            x: round(segment.start.x, 4),
+            y: round(segment.start.y, 4),
+          },
+          end: {
+            x: round(segment.end.x, 4),
+            y: round(segment.end.y, 4),
+          },
+        },
+      ]),
+    )
+
+    expect(actualById).toEqual(expectedById)
+    expect(room.anchor).toEqual({ x: 10, y: 0 })
+    expect(room.startHeading).toBe(90)
+  })
+
+  it('rejects deleting a middle wall from an open chain', () => {
+    const room = createRoom({
+      anchor: { x: 0, y: 0 },
+      startHeading: 0,
+      segments: [
+        createSegment({ id: 'seg-a', label: 'A', length: 10, turn: 90 }),
+        createSegment({ id: 'seg-b', label: 'B', length: 8, turn: -90 }),
+        createSegment({ id: 'seg-c', label: 'C', length: 6, turn: 0 }),
+      ],
+    })
+    const before = structuredClone(room)
+
+    expect(deleteRoomSegmentPreservingGeometry(room, 'seg-b')).toEqual({
+      deleted: false,
+      reason: 'split-open-chain',
+    })
+    expect(room).toEqual(before)
   })
 
   it('snaps nearby furniture edges flush to room walls', () => {

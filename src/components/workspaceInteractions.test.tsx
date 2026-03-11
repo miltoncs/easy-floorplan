@@ -707,6 +707,45 @@ describe('workspace interactions', () => {
     expect(screen.getByRole('button', { name: /First floor3 rooms/i })).toBeInTheDocument()
   })
 
+  it('keeps the remaining wall lines fixed when deleting a wall from a closed room', async () => {
+    const user = userEvent.setup()
+    const draft = createSeedState()
+    const room = createRoom({
+      name: 'Square room',
+      anchor: { x: 0, y: 0 },
+      startHeading: 0,
+      segments: [
+        createSegment({ id: 'wall-a', label: 'Wall A', length: 10, turn: 90 }),
+        createSegment({ id: 'wall-b', label: 'Wall B', length: 8, turn: 90 }),
+        createSegment({ id: 'wall-c', label: 'Wall C', length: 10, turn: 90 }),
+        createSegment({ id: 'wall-d', label: 'Wall D', length: 8, turn: 90 }),
+      ],
+      furniture: [],
+    })
+
+    draft.structures[0].floors[0].rooms = [room]
+    draft.selectedRoomId = room.id
+
+    renderEditor({ draft })
+
+    const expectedLineMap = new Map(
+      ['wall-b', 'wall-c', 'wall-d'].map((segmentId) => [segmentId, getWallLinePosition(segmentId)]),
+    )
+
+    fireEvent.contextMenu(screen.getByTestId('wall-hit-wall-a'), {
+      clientX: 120,
+      clientY: 120,
+    })
+
+    await user.click(screen.getByRole('menuitem', { name: 'Delete wall' }))
+
+    await waitFor(() => expect(screen.queryByTestId('wall-hit-wall-a')).not.toBeInTheDocument())
+
+    expect(new Map(
+      ['wall-b', 'wall-c', 'wall-d'].map((segmentId) => [segmentId, getWallLinePosition(segmentId)]),
+    )).toEqual(expectedLineMap)
+  })
+
   it('supports shift-drag marquee selection on the canvas', async () => {
     const draft = createSeedState()
 
@@ -883,6 +922,17 @@ function getViewBoxCenter(element: HTMLElement) {
 
 function getAnnotationLeft(testId: string) {
   return Number.parseFloat(screen.getByTestId(testId).getAttribute('style')?.match(/left:\s*([\d.]+)px/)?.[1] ?? '0')
+}
+
+function getWallLinePosition(segmentId: string) {
+  const line = screen.getByTestId(`wall-hit-${segmentId}`)
+
+  return {
+    x1: Number(line.getAttribute('x1')),
+    x2: Number(line.getAttribute('x2')),
+    y1: Number(line.getAttribute('y1')),
+    y2: Number(line.getAttribute('y2')),
+  }
 }
 
 function readSuggestionActionPosition(element: HTMLElement, width: number, height: number) {

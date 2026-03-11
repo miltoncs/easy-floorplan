@@ -43,7 +43,7 @@ import {
   selectTargetInDraft,
   touchStructure,
 } from '../lib/blueprint'
-import { addPolar, clamp, normalizeAngle, roomToGeometry, validateRoomWalls } from '../lib/geometry'
+import { addPolar, clamp, deleteRoomSegmentPreservingGeometry, normalizeAngle, roomToGeometry, validateRoomWalls } from '../lib/geometry'
 import { validateName } from '../lib/nameValidation'
 import {
   createStructureExportEnvelope,
@@ -1143,27 +1143,45 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
         status: 'Wall inserted.',
       })
     },
-    deleteWall: (structureId: string, floorId: string, roomId: string, segmentId: string) =>
-      mutateDraft((draft) => {
-        const floor = findFloorById(draft, structureId, floorId)
-        if (!floor) {
-          return
-        }
+    deleteWall: (structureId: string, floorId: string, roomId: string, segmentId: string) => {
+      const room = findRoomById(state.draft, structureId, floorId, roomId)
+      if (!room || !room.segments.some((segment) => segment.id === segmentId)) {
+        setStatus('Wall could not be found.')
+        return
+      }
 
-        const room = floor.rooms.find((item) => item.id === roomId)
-        if (!room) {
-          return
-        }
+      if (room.segments.length <= 1) {
+        mutateDraft((draft) => {
+          const floor = findFloorById(draft, structureId, floorId)
+          if (!floor) {
+            return
+          }
 
-        if (room.segments.length <= 1) {
           floor.rooms = floor.rooms.filter((item) => item.id !== roomId)
+        }, {
+          status: 'Wall removed.',
+        })
+        return
+      }
+
+      const previewRoom = structuredClone(room)
+      const deletionResult = deleteRoomSegmentPreservingGeometry(previewRoom, segmentId)
+      if (!deletionResult.deleted) {
+        setStatus('Delete an end wall while the room is still open.')
+        return
+      }
+
+      mutateDraft((draft) => {
+        const editableRoom = findRoomById(draft, structureId, floorId, roomId)
+        if (!editableRoom) {
           return
         }
 
-        room.segments = room.segments.filter((segment) => segment.id !== segmentId)
+        deleteRoomSegmentPreservingGeometry(editableRoom, segmentId)
       }, {
         status: 'Wall removed.',
-      }),
+      })
+    },
     clearWalls: () =>
       mutateDraft((draft) => {
         const room = findSelectedRoom(draft)
