@@ -88,10 +88,7 @@ function AppShell() {
             onClick={() => setMenuOpen((current) => !current)}
             type="button"
           >
-            <span className="gear-icon" aria-hidden="true">
-              <span className="gear-icon__ring" />
-              <span className="gear-icon__hub" />
-            </span>
+            <SettingsIcon />
           </button>
 
           {menuOpen ? (
@@ -296,6 +293,19 @@ function formatSettingNumber(value: number) {
 
 function formatSnapStrengthLabel(value: number) {
   return value <= 0 ? 'Off' : `${Number(value.toFixed(2)).toString()} ft`
+}
+
+function SettingsIcon() {
+  return (
+    <svg aria-hidden="true" className="settings-icon" viewBox="0 0 24 24">
+      <path className="settings-icon__track" d="M5.5 4.5V19.5" />
+      <path className="settings-icon__track" d="M12 4.5V19.5" />
+      <path className="settings-icon__track" d="M18.5 4.5V19.5" />
+      <rect className="settings-icon__knob" height="4.5" rx="1.2" width="4.5" x="3.25" y="6" />
+      <rect className="settings-icon__knob" height="4.5" rx="1.2" width="4.5" x="9.75" y="11.25" />
+      <rect className="settings-icon__knob" height="4.5" rx="1.2" width="4.5" x="16.25" y="7.75" />
+    </svg>
+  )
 }
 
 export default App

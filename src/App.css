@@ -259,58 +259,32 @@
   padding: 0;
 }
 
-.gear-icon {
-  position: relative;
-  inline-size: 1rem;
-  block-size: 1rem;
-  display: inline-grid;
-  place-items: center;
+.settings-icon {
+  inline-size: 1.28rem;
+  block-size: 1.28rem;
+  overflow: visible;
+  transition: transform 180ms ease;
 }
 
-.gear-icon::before {
-  content: '';
-  position: absolute;
-  inset: -0.14rem;
-  border-radius: 999px;
-  background:
-    radial-gradient(circle at center, transparent 0.48rem, currentColor 0.49rem, currentColor 0.56rem, transparent 0.57rem),
-    conic-gradient(
-      from 0deg,
-      currentColor 0deg 18deg,
-      transparent 18deg 42deg,
-      currentColor 42deg 60deg,
-      transparent 60deg 102deg,
-      currentColor 102deg 120deg,
-      transparent 120deg 162deg,
-      currentColor 162deg 180deg,
-      transparent 180deg 222deg,
-      currentColor 222deg 240deg,
-      transparent 240deg 282deg,
-      currentColor 282deg 300deg,
-      transparent 300deg 342deg,
-      currentColor 342deg 360deg
-    );
-  opacity: 0.82;
+.settings-icon__track {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  opacity: 0.28;
 }
 
-.gear-icon__ring,
-.gear-icon__hub {
-  position: relative;
-  display: block;
-  border-radius: 999px;
-  background: currentColor;
+.settings-icon__knob {
+  fill: currentColor;
 }
 
-.gear-icon__ring {
-  inline-size: 0.9rem;
-  block-size: 0.9rem;
-  opacity: 0.22;
+.icon-button:hover .settings-icon,
+.icon-button:focus-visible .settings-icon {
+  transform: translateY(-0.02rem);
 }
 
-.gear-icon__hub {
-  position: absolute;
-  inline-size: 0.28rem;
-  block-size: 0.28rem;
+.icon-button[aria-expanded='true'] .settings-icon {
+  transform: rotate(8deg);
 }
 
 .app-menu {
