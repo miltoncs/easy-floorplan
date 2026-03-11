@@ -58,6 +58,41 @@ test('supports direct canvas editing and route-based navigation', async ({ page 
   await page.mouse.wheel(0, 400)
   await expect(page.locator('.toolbar-pill').first()).toHaveText('100%')
 
+  const draftBeforeDrag = await page.evaluate(() => JSON.parse(window.localStorage.getItem('incremental-blueprint/v1') || 'null'))
+  const kitchen = draftBeforeDrag.structures[0].floors[0].rooms.find((room: { id: string; name: string; anchor: { y: number } }) => room.name === 'Kitchen')
+  if (!kitchen) {
+    throw new Error('Expected Kitchen room in saved draft')
+  }
+
+  const kitchenLabel = page.getByTestId(`room-label-${kitchen.id}`)
+  const kitchenFill = page.getByTestId(`room-fill-${kitchen.id}`)
+  const kitchenLabelBox = await kitchenLabel.boundingBox()
+  const kitchenFillBox = await kitchenFill.boundingBox()
+  if (!kitchenLabelBox || !kitchenFillBox) {
+    throw new Error('Expected Kitchen label and room fill bounding boxes')
+  }
+
+  const viewBoxBeforeRoomDrag = await canvas.getAttribute('viewBox')
+  await page.mouse.move(kitchenLabelBox.x + kitchenLabelBox.width / 2, kitchenLabelBox.y + kitchenLabelBox.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(kitchenLabelBox.x + kitchenLabelBox.width / 2, kitchenLabelBox.y + kitchenLabelBox.height / 2 - 120, {
+    steps: 10,
+  })
+  expect(await canvas.getAttribute('viewBox')).toBe(viewBoxBeforeRoomDrag)
+  await page.mouse.up()
+
+  const kitchenFillAfterDrag = await kitchenFill.boundingBox()
+  const draftAfterDrag = await page.evaluate(() => JSON.parse(window.localStorage.getItem('incremental-blueprint/v1') || 'null'))
+  const kitchenAfterDrag = draftAfterDrag.structures[0].floors[0].rooms.find((room: { id: string; anchor: { y: number } }) => room.id === kitchen.id)
+  if (!kitchenFillAfterDrag || !kitchenAfterDrag) {
+    throw new Error('Expected Kitchen room state after drag')
+  }
+
+  expect(await canvas.getAttribute('viewBox')).toBe(viewBoxBeforeRoomDrag)
+  expect(kitchenAfterDrag.anchor.y).toBeGreaterThan(kitchen.anchor.y + 5)
+  expect(kitchenFillAfterDrag.y).toBeLessThan(kitchenFillBox.y - 80)
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+
   await roomLabel.click({ force: true })
   await expect(page.getByRole('dialog')).toContainText('Rename room')
 

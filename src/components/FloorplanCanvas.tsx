@@ -9,10 +9,11 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react'
 import { useEditor } from '../context/EditorContext'
-import { DEFAULT_LABEL_FONT_SIZE, computeFloorBounds, findSegmentById, getRoomLabelPoint, getViewBox } from '../lib/blueprint'
+import { DEFAULT_LABEL_FONT_SIZE, computeFloorBounds, findSegmentById, getRoomLabelPoint, getViewBox, padBounds } from '../lib/blueprint'
 import { parseDistanceInput } from '../lib/distance'
 import {
   addPolar,
+  boundsSize,
   clamp,
   formatCornerAngleBadge,
   formatFeet,
@@ -22,7 +23,7 @@ import {
   pointsToPath,
   roomToGeometry,
 } from '../lib/geometry'
-import type { CanvasTarget, Floor, Point, Room, RoomSuggestion, SuggestionSegment } from '../types'
+import type { Bounds, CanvasTarget, Floor, Point, Room, RoomSuggestion, SuggestionSegment } from '../types'
 
 type DragState =
   | {
@@ -173,15 +174,19 @@ export function FloorplanCanvas() {
   const dragRef = useRef<DragState>(null)
   const wheelGestureRef = useRef<WheelGestureState | null>(null)
   const suppressCanvasClickRef = useRef(false)
+  const suppressTargetClickRef = useRef<CanvasTarget | null>(null)
+  const suppressTargetClickTimerRef = useRef<number | null>(null)
   const inlineWallInputRef = useRef<HTMLInputElement | null>(null)
   const annotationPlacementRef = useRef<Record<string, number>>({})
   const [isDragging, setIsDragging] = useState(false)
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 })
+  const [dragViewBounds, setDragViewBounds] = useState<Bounds | null>(null)
   const [selectionBox, setSelectionBox] = useState<CanvasRect | null>(null)
   const [inlineWallEditor, setInlineWallEditor] = useState<InlineWallEditorState | null>(null)
   const canvasAspectRatio =
     canvasSize.width > 0 && canvasSize.height > 0 ? canvasSize.width / canvasSize.height : undefined
-  const viewBox = getViewBox(viewBounds, ui.camera.zoom, ui.camera.offset, canvasAspectRatio)
+  const effectiveViewBounds = dragViewBounds ?? viewBounds
+  const viewBox = getViewBox(effectiveViewBounds, ui.camera.zoom, ui.camera.offset, canvasAspectRatio)
   const labelScale = draft.labelFontSize / DEFAULT_LABEL_FONT_SIZE
   const canvasAppearanceStyle = {
     '--canvas-wall-line-scale': String(draft.wallStrokeScale),
@@ -391,6 +396,14 @@ export function FloorplanCanvas() {
     )
   }, [placedAnnotations])
 
+  useEffect(() => {
+    return () => {
+      if (suppressTargetClickTimerRef.current !== null) {
+        window.clearTimeout(suppressTargetClickTimerRef.current)
+      }
+    }
+  }, [])
+
   return (
     <div
       className={[
@@ -508,7 +521,7 @@ export function FloorplanCanvas() {
           }
 
           const completedDrag = dragRef.current
-          endDrag(event.pointerId)
+          endDrag(event.pointerId, completedDrag)
 
           if (completedDrag.kind === 'selection') {
             suppressCanvasClickRef.current = true
@@ -537,15 +550,36 @@ export function FloorplanCanvas() {
             return
           }
 
-          if (completedDrag.kind === 'room' && !completedDrag.moved) {
+          if (completedDrag.moved && (completedDrag.kind === 'room' || completedDrag.kind === 'furniture')) {
+            suppressNextTargetClick(
+              completedDrag.kind === 'room'
+                ? {
+                    kind: 'room',
+                    structureId: completedDrag.structureId,
+                    floorId: completedDrag.floorId,
+                    roomId: completedDrag.roomId,
+                  }
+                : {
+                    kind: 'furniture',
+                    structureId: completedDrag.structureId,
+                    floorId: completedDrag.floorId,
+                    roomId: completedDrag.roomId,
+                    furnitureId: completedDrag.furnitureId,
+                  },
+            )
+            return
+          }
+
+          if (completedDrag.kind === 'room') {
             actions.openRenameDialog('room', {
               structureId: completedDrag.structureId,
               floorId: completedDrag.floorId,
               roomId: completedDrag.roomId,
             })
+            return
           }
 
-          if (completedDrag.kind === 'furniture' && !completedDrag.moved) {
+          if (completedDrag.kind === 'furniture') {
             actions.openFurnitureDialog({
               structureId: completedDrag.structureId,
               floorId: completedDrag.floorId,
@@ -564,6 +598,7 @@ export function FloorplanCanvas() {
         onLostPointerCapture={() => {
           dragRef.current = null
           setIsDragging(false)
+          setDragViewBounds(null)
           setSelectionBox(null)
         }}
       >
@@ -1125,6 +1160,30 @@ export function FloorplanCanvas() {
     })
   }
 
+  function suppressNextTargetClick(target: CanvasTarget) {
+    suppressTargetClickRef.current = target
+    if (suppressTargetClickTimerRef.current !== null) {
+      window.clearTimeout(suppressTargetClickTimerRef.current)
+    }
+    suppressTargetClickTimerRef.current = window.setTimeout(() => {
+      suppressTargetClickRef.current = null
+      suppressTargetClickTimerRef.current = null
+    }, 0)
+  }
+
+  function consumeSuppressedTargetClick(target: CanvasTarget) {
+    if (!matchesTarget(suppressTargetClickRef.current, target)) {
+      return false
+    }
+
+    suppressTargetClickRef.current = null
+    if (suppressTargetClickTimerRef.current !== null) {
+      window.clearTimeout(suppressTargetClickTimerRef.current)
+      suppressTargetClickTimerRef.current = null
+    }
+    return true
+  }
+
   function handleWallClick(target: CanvasTarget) {
     if (target.kind !== 'wall') {
       return
@@ -1155,6 +1214,10 @@ export function FloorplanCanvas() {
   }
 
   function handleAnnotationClick(annotation: PlacedCanvasAnnotation) {
+    if (consumeSuppressedTargetClick(annotation.target)) {
+      return
+    }
+
     switch (annotation.target.kind) {
       case 'floor':
         actions.selectFloor(annotation.target.structureId, annotation.target.floorId)
@@ -1371,16 +1434,20 @@ export function FloorplanCanvas() {
       return
     }
 
-    svgRef.current.setPointerCapture?.(event.pointerId)
+    if (dragState.kind === 'room' || dragState.kind === 'furniture') {
+      setDragViewBounds(viewBounds)
+    }
+
     dragRef.current = dragState
     setIsDragging(true)
   }
 
-  function endDrag(pointerId: number) {
-    if (svgRef.current?.hasPointerCapture?.(pointerId)) {
-      svgRef.current.releasePointerCapture(pointerId)
+  function endDrag(pointerId: number, completedDrag?: Exclude<DragState, null>) {
+    if (dragViewBounds && completedDrag && (completedDrag.kind === 'room' || completedDrag.kind === 'furniture')) {
+      actions.setCamera(getCameraForViewBox(viewBounds, viewBox, canvasAspectRatio))
     }
 
+    setDragViewBounds(null)
     dragRef.current = null
     setIsDragging(false)
   }
@@ -1420,6 +1487,7 @@ export function FloorplanCanvas() {
 
     const geometry = roomToGeometry(room)
     const path = pointsToPath(geometry.closed ? geometry.points.slice(0, -1) : geometry.points)
+    const openRoomHitPath = !geometry.closed && geometry.points.length >= 3 ? `${path} Z` : null
     const roomTarget: CanvasTarget = {
       kind: 'room',
       structureId: activeStructure.id,
@@ -1447,6 +1515,9 @@ export function FloorplanCanvas() {
         })
       },
       onClick: () => {
+        if (consumeSuppressedTargetClick(roomTarget)) {
+          return
+        }
         actions.selectRoom(activeStructure.id, floor.id, room.id)
         actions.openRenameDialog('room', {
           structureId: activeStructure.id,
@@ -1461,6 +1532,16 @@ export function FloorplanCanvas() {
 
     return (
       <g className={active || multiSelected ? 'room-layer active' : 'room-layer'}>
+        {openRoomHitPath ? (
+          <path
+            className="room-hit-area"
+            d={openRoomHitPath}
+            data-testid={`room-hit-${room.id}`}
+            fill="transparent"
+            pointerEvents="all"
+            {...roomHandlers}
+          />
+        ) : null}
         {geometry.closed ? (
           <path
             className={['room-fill', hovered ? 'hovered' : '', multiSelected ? 'selected' : ''].filter(Boolean).join(' ')}
@@ -1546,6 +1627,9 @@ export function FloorplanCanvas() {
                       })
                     }}
                     onClick={() => {
+                      if (consumeSuppressedTargetClick(furnitureTarget)) {
+                        return
+                      }
                       actions.selectFurniture(activeStructure.id, floor.id, room.id, item.id)
                       actions.openFurnitureDialog({
                         structureId: activeStructure.id,
@@ -1790,6 +1874,28 @@ function getCanvasMetrics(viewBox: { width: number; height: number }, canvasSize
     heightPx,
     unitX: viewBox.width / widthPx,
     unitY: viewBox.height / heightPx,
+  }
+}
+
+function getCameraForViewBox(
+  bounds: Bounds,
+  targetViewBox: { x: number; y: number; width: number; height: number },
+  aspectRatio?: number,
+) {
+  const paddedSize = boundsSize(padBounds(bounds, 6))
+  const zoom = clamp(
+    Math.max(paddedSize.width / targetViewBox.width, paddedSize.height / targetViewBox.height),
+    0.45,
+    3.5,
+  )
+  const baseViewBox = getViewBox(bounds, zoom, { x: 0, y: 0 }, aspectRatio)
+
+  return {
+    zoom,
+    offset: {
+      x: targetViewBox.x - baseViewBox.x,
+      y: targetViewBox.y - baseViewBox.y,
+    },
   }
 }
 

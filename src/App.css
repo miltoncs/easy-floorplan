@@ -695,6 +695,7 @@
 }
 
 .room-fill,
+.room-hit-area,
 .room-stroke {
   stroke-linejoin: round;
   transition:

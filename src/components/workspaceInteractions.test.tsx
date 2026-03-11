@@ -67,6 +67,8 @@ describe('workspace interactions', () => {
     expect(wheelEvent.defaultPrevented).toBe(true)
 
     const roomLabel = screen.getByTestId(`room-label-${room.id}`)
+    expect(screen.getByTestId(`room-hit-${room.id}`)).toBeInTheDocument()
+    const initialViewBox = svg.getAttribute('viewBox')
     const initialRoomLeft = Number.parseFloat(roomLabel.getAttribute('style')?.match(/left:\s*([\d.]+)px/)?.[1] ?? '0')
 
     fireEvent.pointerDown(roomLabel, {
@@ -80,6 +82,7 @@ describe('workspace interactions', () => {
       clientX: 220,
       clientY: 176,
     })
+    expect(svg.getAttribute('viewBox')).toBe(initialViewBox)
     fireEvent.pointerUp(svg, {
       pointerId: 1,
       clientX: 220,
