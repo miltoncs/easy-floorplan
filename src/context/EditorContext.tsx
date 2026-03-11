@@ -11,8 +11,12 @@ import {
 } from 'react'
 import { createSeedState } from '../data/seed'
 import {
+  MAX_FURNITURE_CORNER_SNAP_STRENGTH,
+  MAX_FURNITURE_SNAP_STRENGTH,
   MAX_LABEL_FONT_SIZE,
   MAX_WALL_STROKE_SCALE,
+  MIN_FURNITURE_CORNER_SNAP_STRENGTH,
+  MIN_FURNITURE_SNAP_STRENGTH,
   MIN_LABEL_FONT_SIZE,
   MIN_WALL_STROKE_SCALE,
   cloneImportedStructure,
@@ -893,6 +897,28 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
       mutateDraft(
         (draft) => {
           draft.showLabelShapes = checked
+        },
+        { touchStructure: false, recordHistory: false },
+      ),
+    setFurnitureSnapStrength: (value: number) =>
+      mutateDraft(
+        (draft) => {
+          draft.furnitureSnapStrength = clamp(
+            value,
+            MIN_FURNITURE_SNAP_STRENGTH,
+            MAX_FURNITURE_SNAP_STRENGTH,
+          )
+        },
+        { touchStructure: false, recordHistory: false },
+      ),
+    setFurnitureCornerSnapStrength: (value: number) =>
+      mutateDraft(
+        (draft) => {
+          draft.furnitureCornerSnapStrength = clamp(
+            value,
+            MIN_FURNITURE_CORNER_SNAP_STRENGTH,
+            MAX_FURNITURE_CORNER_SNAP_STRENGTH,
+          )
         },
         { touchStructure: false, recordHistory: false },
       ),

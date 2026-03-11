@@ -5,8 +5,12 @@ import { CanvasContextMenu } from './components/CanvasContextMenu'
 import { EditorDialogs } from './components/EditorDialogs'
 import { EditorProvider, useEditor } from './context/EditorContext'
 import {
+  MAX_FURNITURE_CORNER_SNAP_STRENGTH,
+  MAX_FURNITURE_SNAP_STRENGTH,
   MAX_LABEL_FONT_SIZE,
   MAX_WALL_STROKE_SCALE,
+  MIN_FURNITURE_CORNER_SNAP_STRENGTH,
+  MIN_FURNITURE_SNAP_STRENGTH,
   MIN_LABEL_FONT_SIZE,
   MIN_WALL_STROKE_SCALE,
 } from './lib/blueprint'
@@ -248,6 +252,37 @@ function AppSettingsDialog({
             <p className="panel-kicker">Editing</p>
             <h3>Canvas-first controls</h3>
             <p>Walls, corners, room names, and inferred geometry are edited directly on the drawing. Fine-grain changes still use dialogs when needed.</p>
+            <div className="settings-controls">
+              <label className="settings-slider">
+                <span>Furniture wall snap strength</span>
+                <strong>{formatSnapStrengthLabel(draft.furnitureSnapStrength)}</strong>
+                <input
+                  aria-label="Furniture wall snap strength"
+                  className="settings-slider__input"
+                  max={MAX_FURNITURE_SNAP_STRENGTH}
+                  min={MIN_FURNITURE_SNAP_STRENGTH}
+                  onChange={(event) => actions.setFurnitureSnapStrength(Number(event.target.value))}
+                  step={0.25}
+                  type="range"
+                  value={draft.furnitureSnapStrength}
+                />
+              </label>
+
+              <label className="settings-slider">
+                <span>Furniture corner snap strength</span>
+                <strong>{formatSnapStrengthLabel(draft.furnitureCornerSnapStrength)}</strong>
+                <input
+                  aria-label="Furniture corner snap strength"
+                  className="settings-slider__input"
+                  max={MAX_FURNITURE_CORNER_SNAP_STRENGTH}
+                  min={MIN_FURNITURE_CORNER_SNAP_STRENGTH}
+                  onChange={(event) => actions.setFurnitureCornerSnapStrength(Number(event.target.value))}
+                  step={0.25}
+                  type="range"
+                  value={draft.furnitureCornerSnapStrength}
+                />
+              </label>
+            </div>
           </section>
         </div>
       </div>
@@ -257,6 +292,10 @@ function AppSettingsDialog({
 
 function formatSettingNumber(value: number) {
   return Number.isInteger(value) ? String(value) : value.toFixed(1)
+}
+
+function formatSnapStrengthLabel(value: number) {
+  return value <= 0 ? 'Off' : `${Number(value.toFixed(2)).toString()} ft`
 }
 
 export default App

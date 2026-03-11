@@ -31,6 +31,7 @@ import {
   normalizeAngle,
   pointsToPath,
   roomToGeometry,
+  snapFurnitureToRoom,
 } from '../lib/geometry'
 import type { Bounds, CanvasTarget, Floor, Point, Room, RoomSuggestion, SuggestionSegment } from '../types'
 
@@ -620,6 +621,7 @@ export function FloorplanCanvas() {
           activeDrag.currentX = nextX
           activeDrag.currentY = nextY
           actions.mutateDraft((draftState) => {
+            const room = findRoomById(draftState, activeDrag.structureId, activeDrag.floorId, activeDrag.roomId)
             const item = findFurnitureById(
               draftState,
               activeDrag.structureId,
@@ -627,12 +629,24 @@ export function FloorplanCanvas() {
               activeDrag.roomId,
               activeDrag.furnitureId,
             )
-            if (!item) {
+
+            if (!room || !item) {
               return
             }
 
-            item.x = nextX
-            item.y = nextY
+            const nextPosition = snapFurnitureToRoom(
+              room,
+              {
+                ...item,
+                x: nextX,
+                y: nextY,
+              },
+              draftState.furnitureSnapStrength,
+              draftState.furnitureCornerSnapStrength,
+            )
+
+            item.x = nextPosition.x
+            item.y = nextPosition.y
           }, {
             recordHistory: false,
             touchStructure: false,

@@ -5,7 +5,7 @@ import App from './App'
 import { STORAGE_KEY } from './lib/blueprint'
 
 describe('app settings', () => {
-  it('updates persistent canvas appearance settings from the settings dialog', async () => {
+  it('updates persistent canvas and furniture snapping settings from the settings dialog', async () => {
     const user = userEvent.setup()
 
     render(<App />)
@@ -21,6 +21,12 @@ describe('app settings', () => {
       target: { value: '16' },
     })
     await user.click(within(dialog).getByRole('checkbox', { name: 'Show label shapes' }))
+    fireEvent.change(within(dialog).getByRole('slider', { name: 'Furniture wall snap strength' }), {
+      target: { value: '1.75' },
+    })
+    fireEvent.change(within(dialog).getByRole('slider', { name: 'Furniture corner snap strength' }), {
+      target: { value: '0.5' },
+    })
 
     const canvasStage = screen.getByTestId('canvas-stage')
     const firstRoomLabel = screen.getAllByTestId(/room-label-/)[0]
@@ -33,5 +39,7 @@ describe('app settings', () => {
     expect(savedDraft).toContain('"wallStrokeScale":1.6')
     expect(savedDraft).toContain('"labelFontSize":16')
     expect(savedDraft).toContain('"showLabelShapes":false')
+    expect(savedDraft).toContain('"furnitureSnapStrength":1.75')
+    expect(savedDraft).toContain('"furnitureCornerSnapStrength":0.5')
   })
 })

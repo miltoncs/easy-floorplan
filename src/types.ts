@@ -67,6 +67,8 @@ export type DraftState = {
   wallStrokeScale: number
   labelFontSize: number
   showLabelShapes: boolean
+  furnitureSnapStrength: number
+  furnitureCornerSnapStrength: number
 }
 
 export type EntityIds = {

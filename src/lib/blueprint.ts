@@ -32,6 +32,12 @@ export const MIN_LABEL_FONT_SIZE = 10
 export const MAX_LABEL_FONT_SIZE = 18
 export const DEFAULT_LABEL_FONT_SIZE = 12.5
 export const DEFAULT_SHOW_LABEL_SHAPES = true
+export const MIN_FURNITURE_SNAP_STRENGTH = 0
+export const MAX_FURNITURE_SNAP_STRENGTH = 3
+export const DEFAULT_FURNITURE_SNAP_STRENGTH = 1
+export const MIN_FURNITURE_CORNER_SNAP_STRENGTH = 0
+export const MAX_FURNITURE_CORNER_SNAP_STRENGTH = 3
+export const DEFAULT_FURNITURE_CORNER_SNAP_STRENGTH = 1
 
 export function makeId(prefix: string) {
   return `${prefix}-${Math.random().toString(36).slice(2, 9)}`
@@ -272,6 +278,28 @@ export function normalizeDraftCanvasSettings(state: DraftState) {
   }
   if (typeof state.showLabelShapes !== 'boolean') {
     state.showLabelShapes = DEFAULT_SHOW_LABEL_SHAPES
+  }
+  if (typeof state.furnitureSnapStrength !== 'number' || !Number.isFinite(state.furnitureSnapStrength)) {
+    state.furnitureSnapStrength = DEFAULT_FURNITURE_SNAP_STRENGTH
+  } else {
+    state.furnitureSnapStrength = clampNumber(
+      state.furnitureSnapStrength,
+      MIN_FURNITURE_SNAP_STRENGTH,
+      MAX_FURNITURE_SNAP_STRENGTH,
+    )
+  }
+  if (typeof state.furnitureCornerSnapStrength !== 'number' || !Number.isFinite(state.furnitureCornerSnapStrength)) {
+    state.furnitureCornerSnapStrength = clampNumber(
+      state.furnitureSnapStrength,
+      MIN_FURNITURE_CORNER_SNAP_STRENGTH,
+      MAX_FURNITURE_CORNER_SNAP_STRENGTH,
+    )
+  } else {
+    state.furnitureCornerSnapStrength = clampNumber(
+      state.furnitureCornerSnapStrength,
+      MIN_FURNITURE_CORNER_SNAP_STRENGTH,
+      MAX_FURNITURE_CORNER_SNAP_STRENGTH,
+    )
   }
 }
 

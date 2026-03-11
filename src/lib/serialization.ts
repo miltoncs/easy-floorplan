@@ -152,7 +152,9 @@ function isDraftStateLike(value: unknown): value is DraftState {
     (!('showAngleLabels' in value) || typeof value.showAngleLabels === 'boolean') &&
     (!('wallStrokeScale' in value) || typeof value.wallStrokeScale === 'number') &&
     (!('labelFontSize' in value) || typeof value.labelFontSize === 'number') &&
-    (!('showLabelShapes' in value) || typeof value.showLabelShapes === 'boolean')
+    (!('showLabelShapes' in value) || typeof value.showLabelShapes === 'boolean') &&
+    (!('furnitureSnapStrength' in value) || typeof value.furnitureSnapStrength === 'number') &&
+    (!('furnitureCornerSnapStrength' in value) || typeof value.furnitureCornerSnapStrength === 'number')
   )
 }
 

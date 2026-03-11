@@ -1,4 +1,4 @@
-import type { Bounds, CornerGeometry, Point, Room, RoomGeometry, SegmentGeometry } from '../types'
+import type { Bounds, CornerGeometry, Furniture, Point, Room, RoomGeometry, SegmentGeometry } from '../types'
 
 const CLOSE_EPSILON = 0.45
 const INTERSECTION_EPSILON = 1e-6
@@ -309,6 +309,83 @@ export function midpoint(a: Point, b: Point): Point {
   }
 }
 
+export function snapFurnitureToRoom(
+  room: Room,
+  furniture: Furniture,
+  wallSnapStrength: number,
+  cornerSnapStrength: number,
+) {
+  const cornerSnapCandidate = getFurnitureCornerSnapCandidate(room, furniture, cornerSnapStrength)
+  if (cornerSnapCandidate) {
+    return cornerSnapCandidate
+  }
+
+  const threshold = Math.max(wallSnapStrength, 0)
+
+  if (threshold === 0) {
+    return {
+      x: furniture.x,
+      y: furniture.y,
+    }
+  }
+
+  const corners = getFurnitureCorners(furniture)
+  let bestX = furniture.x
+  let bestY = furniture.y
+  let bestScore = Number.POSITIVE_INFINITY
+
+  roomToGeometry(room).segments.forEach((segment) => {
+    const tangent = normalizeVector(subtractPoints(segment.end, segment.start))
+
+    if (!tangent) {
+      return
+    }
+
+    const normal = {
+      x: -tangent.y,
+      y: tangent.x,
+    }
+    const segmentInterval = getProjectionInterval([segment.start, segment.end], tangent)
+    const furnitureTangentInterval = getProjectionInterval(corners, tangent)
+    const alongGap = getIntervalGap(segmentInterval, furnitureTangentInterval)
+
+    if (alongGap > threshold) {
+      return
+    }
+
+    const wallOffset = dotProduct(segment.start, normal)
+    const furnitureNormalInterval = getProjectionInterval(corners, normal)
+    const alignNearSide = wallOffset - furnitureNormalInterval.min
+    const alignFarSide = wallOffset - furnitureNormalInterval.max
+    const snapDelta = Math.abs(alignNearSide) <= Math.abs(alignFarSide) ? alignNearSide : alignFarSide
+
+    if (Math.abs(snapDelta) > threshold) {
+      return
+    }
+
+    const score = Math.abs(snapDelta) + alongGap * 0.25
+    if (bestScore <= score) {
+      return
+    }
+
+    bestX = round(furniture.x + normal.x * snapDelta, 4)
+    bestY = round(furniture.y + normal.y * snapDelta, 4)
+    bestScore = score
+  })
+
+  if (!Number.isFinite(bestScore)) {
+    return {
+      x: furniture.x,
+      y: furniture.y,
+    }
+  }
+
+  return {
+    x: bestX,
+    y: bestY,
+  }
+}
+
 export function emptyBounds(): Bounds {
   return {
     minX: 0,
@@ -389,4 +466,118 @@ function pointOnSegment(point: Point, start: Point, end: Point) {
 
 function orientation(a: Point, b: Point, c: Point) {
   return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
+}
+
+function getFurnitureCornerSnapCandidate(room: Room, furniture: Furniture, snapStrength: number) {
+  const threshold = Math.max(snapStrength, 0)
+
+  if (threshold === 0) {
+    return null
+  }
+
+  const furnitureCorners = getFurnitureCorners(furniture)
+  const roomCorners = getRoomCornerPoints(room)
+  let bestX = furniture.x
+  let bestY = furniture.y
+  let bestScore = Number.POSITIVE_INFINITY
+
+  roomCorners.forEach((roomCorner) => {
+    furnitureCorners.forEach((furnitureCorner) => {
+      const delta = subtractPoints(roomCorner, furnitureCorner)
+      const distance = Math.hypot(delta.x, delta.y)
+
+      if (distance > threshold || bestScore <= distance) {
+        return
+      }
+
+      bestX = round(furniture.x + delta.x, 4)
+      bestY = round(furniture.y + delta.y, 4)
+      bestScore = distance
+    })
+  })
+
+  if (!Number.isFinite(bestScore)) {
+    return null
+  }
+
+  return {
+    x: bestX,
+    y: bestY,
+  }
+}
+
+function getFurnitureCorners(furniture: Furniture) {
+  const center = {
+    x: furniture.x + furniture.width / 2,
+    y: furniture.y + furniture.depth / 2,
+  }
+
+  return [
+    { x: furniture.x, y: furniture.y },
+    { x: furniture.x + furniture.width, y: furniture.y },
+    { x: furniture.x + furniture.width, y: furniture.y + furniture.depth },
+    { x: furniture.x, y: furniture.y + furniture.depth },
+  ].map((corner) => rotatePoint(corner, center, furniture.rotation))
+}
+
+function rotatePoint(point: Point, center: Point, angle: number) {
+  if (Math.abs(angle) <= INTERSECTION_EPSILON) {
+    return point
+  }
+
+  const radians = degToRad(angle)
+  const translatedX = point.x - center.x
+  const translatedY = point.y - center.y
+
+  return {
+    x: center.x + translatedX * Math.cos(radians) - translatedY * Math.sin(radians),
+    y: center.y + translatedX * Math.sin(radians) + translatedY * Math.cos(radians),
+  }
+}
+
+function normalizeVector(vector: Point) {
+  const length = Math.hypot(vector.x, vector.y)
+
+  if (length <= INTERSECTION_EPSILON) {
+    return null
+  }
+
+  return {
+    x: vector.x / length,
+    y: vector.y / length,
+  }
+}
+
+function getProjectionInterval(points: Point[], axis: Point) {
+  let min = Number.POSITIVE_INFINITY
+  let max = Number.NEGATIVE_INFINITY
+
+  points.forEach((point) => {
+    const projection = dotProduct(point, axis)
+    min = Math.min(min, projection)
+    max = Math.max(max, projection)
+  })
+
+  return { min, max }
+}
+
+function getIntervalGap(left: { min: number; max: number }, right: { min: number; max: number }) {
+  if (left.max < right.min) {
+    return right.min - left.max
+  }
+
+  if (right.max < left.min) {
+    return left.min - right.max
+  }
+
+  return 0
+}
+
+function dotProduct(left: Point, right: Point) {
+  return left.x * right.x + left.y * right.y
+}
+
+function getRoomCornerPoints(room: Room) {
+  const geometry = roomToGeometry(room)
+  return geometry.closed ? geometry.points.slice(0, -1) : geometry.points
 }

@@ -1,5 +1,7 @@
 import type { DraftState } from '../types'
 import {
+  DEFAULT_FURNITURE_CORNER_SNAP_STRENGTH,
+  DEFAULT_FURNITURE_SNAP_STRENGTH,
   DEFAULT_LABEL_FONT_SIZE,
   DEFAULT_SHOW_LABEL_SHAPES,
   DEFAULT_WALL_STROKE_SCALE,
@@ -112,5 +114,7 @@ export function createSeedState(): DraftState {
     wallStrokeScale: DEFAULT_WALL_STROKE_SCALE,
     labelFontSize: DEFAULT_LABEL_FONT_SIZE,
     showLabelShapes: DEFAULT_SHOW_LABEL_SHAPES,
+    furnitureSnapStrength: DEFAULT_FURNITURE_SNAP_STRENGTH,
+    furnitureCornerSnapStrength: DEFAULT_FURNITURE_CORNER_SNAP_STRENGTH,
   }
 }

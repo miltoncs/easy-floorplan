@@ -2,7 +2,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { createSeedState } from '../data/seed'
-import { createRoom, createSegment } from '../lib/blueprint'
+import { createFurniture, createRoom, createSegment } from '../lib/blueprint'
 import { renderEditor } from '../test/renderEditor'
 
 describe('workspace interactions', () => {
@@ -195,6 +195,112 @@ describe('workspace interactions', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Stacked$/ }))
     expect(screen.queryByTestId(`anchor-start-${room.segments[0].id}`)).not.toBeInTheDocument()
     expect(screen.queryByTestId(`anchor-${openEndWall.id}`)).not.toBeInTheDocument()
+  })
+
+  it('snaps dragged furniture to nearby wall segments when enabled', async () => {
+    const draft = createSeedState()
+    const room = createRoom({
+      name: 'Snap room',
+      anchor: { x: 0, y: 0 },
+      startHeading: 0,
+      segments: [
+        createSegment({ id: 'seg-a', length: 10, turn: -90 }),
+        createSegment({ id: 'seg-b', length: 8, turn: -90 }),
+        createSegment({ id: 'seg-c', length: 10, turn: -90 }),
+        createSegment({ id: 'seg-d', length: 8, turn: -90 }),
+      ],
+      furniture: [
+        createFurniture({ id: 'furn-chair', name: 'Chair', x: 0.35, y: -6, width: 2, depth: 2 }),
+      ],
+    })
+
+    draft.structures[0].floors[0].rooms = [room]
+    draft.selectedRoomId = room.id
+    draft.selectedFurnitureId = room.furniture[0].id
+    draft.editorMode = 'furniture'
+    draft.furnitureSnapStrength = 0.75
+    draft.furnitureCornerSnapStrength = 0
+
+    renderEditor({ draft })
+
+    const svg = screen.getByLabelText('Interactive floorplan canvas')
+    mockCanvasRect(svg)
+
+    const furnitureRect = screen.getByTestId(`furniture-${room.furniture[0].id}`)
+    fireEvent.pointerDown(furnitureRect, {
+      button: 0,
+      pointerId: 12,
+      clientX: 240,
+      clientY: 220,
+    })
+    fireEvent.pointerMove(svg, {
+      pointerId: 12,
+      clientX: 246,
+      clientY: 220,
+    })
+    fireEvent.pointerUp(svg, {
+      pointerId: 12,
+      clientX: 246,
+      clientY: 220,
+    })
+
+    await waitFor(() =>
+      expect(Number(screen.getByTestId(`furniture-${room.furniture[0].id}`).getAttribute('x'))).toBeCloseTo(0, 4),
+    )
+  })
+
+  it('snaps dragged furniture corners onto room corners when enabled', async () => {
+    const draft = createSeedState()
+    const room = createRoom({
+      name: 'Corner snap room',
+      anchor: { x: 0, y: 0 },
+      startHeading: 0,
+      segments: [
+        createSegment({ id: 'seg-a', length: 10, turn: -90 }),
+        createSegment({ id: 'seg-b', length: 8, turn: -90 }),
+        createSegment({ id: 'seg-c', length: 10, turn: -90 }),
+        createSegment({ id: 'seg-d', length: 8, turn: -90 }),
+      ],
+      furniture: [
+        createFurniture({ id: 'furn-desk', name: 'Desk', x: 0.35, y: -2.35, width: 2, depth: 2 }),
+      ],
+    })
+
+    draft.structures[0].floors[0].rooms = [room]
+    draft.selectedRoomId = room.id
+    draft.selectedFurnitureId = room.furniture[0].id
+    draft.editorMode = 'furniture'
+    draft.furnitureSnapStrength = 0
+    draft.furnitureCornerSnapStrength = 0.75
+
+    renderEditor({ draft })
+
+    const svg = screen.getByLabelText('Interactive floorplan canvas')
+    mockCanvasRect(svg)
+
+    const furnitureRect = screen.getByTestId(`furniture-${room.furniture[0].id}`)
+    fireEvent.pointerDown(furnitureRect, {
+      button: 0,
+      pointerId: 13,
+      clientX: 240,
+      clientY: 220,
+    })
+    fireEvent.pointerMove(svg, {
+      pointerId: 13,
+      clientX: 246,
+      clientY: 220,
+    })
+    fireEvent.pointerUp(svg, {
+      pointerId: 13,
+      clientX: 246,
+      clientY: 220,
+    })
+
+    await waitFor(() => {
+      const snappedFurniture = screen.getByTestId(`furniture-${room.furniture[0].id}`)
+      expect(Number(snappedFurniture.getAttribute('x'))).toBeCloseTo(0, 4)
+      expect(Number(snappedFurniture.getAttribute('y'))).toBeCloseTo(2, 4)
+    })
   })
 
   it('hides wall anchors when the selected room has no open wall ends', () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { createRoom, createSegment } from './blueprint'
-import { getCornerAngleBetweenWalls, getTurnFromCornerAngle, validateRoomWalls } from './geometry'
+import { createFurniture, createRoom, createSegment } from './blueprint'
+import { getCornerAngleBetweenWalls, getTurnFromCornerAngle, snapFurnitureToRoom, validateRoomWalls } from './geometry'
 
 describe('validateRoomWalls', () => {
   it('allows a non-intersecting room outline', () => {
@@ -67,5 +67,72 @@ describe('validateRoomWalls', () => {
     expect(getTurnFromCornerAngle(180, 'left')).toBe(0)
     expect(getTurnFromCornerAngle(90, 'left')).toBe(90)
     expect(getTurnFromCornerAngle(135, 'right')).toBe(-45)
+  })
+
+  it('snaps nearby furniture edges flush to room walls', () => {
+    const room = createRoom({
+      anchor: { x: 0, y: 0 },
+      startHeading: 0,
+      segments: [
+        createSegment({ id: 'seg-a', length: 10, turn: -90 }),
+        createSegment({ id: 'seg-b', length: 8, turn: -90 }),
+        createSegment({ id: 'seg-c', length: 10, turn: -90 }),
+        createSegment({ id: 'seg-d', length: 8, turn: -90 }),
+      ],
+    })
+
+    const result = snapFurnitureToRoom(
+      room,
+      createFurniture({ x: 4.1, y: -2.4, width: 3, depth: 2, rotation: 0 }),
+      0.5,
+      0,
+    )
+
+    expect(result.x).toBeCloseTo(4.1)
+    expect(result.y).toBeCloseTo(-2)
+  })
+
+  it('snaps furniture corners directly onto room corners', () => {
+    const room = createRoom({
+      anchor: { x: 0, y: 0 },
+      startHeading: 0,
+      segments: [
+        createSegment({ id: 'seg-a', length: 10, turn: -90 }),
+        createSegment({ id: 'seg-b', length: 8, turn: -90 }),
+        createSegment({ id: 'seg-c', length: 10, turn: -90 }),
+        createSegment({ id: 'seg-d', length: 8, turn: -90 }),
+      ],
+    })
+
+    const result = snapFurnitureToRoom(
+      room,
+      createFurniture({ x: 0.3, y: -2.2, width: 2, depth: 2, rotation: 0 }),
+      0,
+      0.5,
+    )
+
+    expect(result).toEqual({
+      x: 0,
+      y: -2,
+    })
+  })
+
+  it('ignores wall extensions when furniture is not near the actual segment span', () => {
+    const room = createRoom({
+      anchor: { x: 0, y: 0 },
+      startHeading: 0,
+      segments: [
+        createSegment({ id: 'seg-a', length: 10, turn: -90 }),
+        createSegment({ id: 'seg-b', length: 8, turn: -90 }),
+        createSegment({ id: 'seg-c', length: 10, turn: -90 }),
+        createSegment({ id: 'seg-d', length: 8, turn: -90 }),
+      ],
+    })
+    const furniture = createFurniture({ x: 0.3, y: -11, width: 2, depth: 2, rotation: 0 })
+
+    expect(snapFurnitureToRoom(room, furniture, 1, 0)).toEqual({
+      x: 0.3,
+      y: -11,
+    })
   })
 })
