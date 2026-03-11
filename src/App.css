@@ -577,6 +577,16 @@
   cursor: grabbing;
 }
 
+.canvas-stage--simplified-drag .canvas-underlay {
+  cursor: grabbing;
+}
+
+.canvas-stage--simplified-drag .floor-layer,
+.canvas-stage--simplified-drag .room-segment,
+.canvas-stage--simplified-drag .furniture-rect {
+  transition: none;
+}
+
 .canvas-stage.selecting {
   cursor: crosshair;
 }

@@ -71,28 +71,31 @@ describe('workspace interactions', () => {
       clientX: 160,
       clientY: 140,
     })
-    fireEvent.pointerMove(svg, {
+    fireEvent.pointerMove(window, {
       pointerId: 21,
       clientX: 220,
       clientY: 176,
     })
 
-    await waitFor(() => expect(getAnnotationLeft(`room-label-${room.id}`)).toBeGreaterThan(initialRoomLeft))
+    await waitFor(() => expect(stage).toHaveClass('canvas-stage--simplified-drag'))
+    expect(screen.queryByTestId(`room-label-${room.id}`)).not.toBeInTheDocument()
+    expect(getGroupTranslate(`room-layer-${room.id}`).x).toBeGreaterThan(0)
     expect(stage).toHaveClass('dragging')
 
     fireEvent.keyDown(window, { key: 'Escape' })
 
-    await waitFor(() => expect(getAnnotationLeft(`room-label-${room.id}`)).toBeCloseTo(initialRoomLeft, 3))
+    await waitFor(() => expect(screen.getByTestId(`room-label-${room.id}`)).toBeInTheDocument())
+    expect(getAnnotationLeft(`room-label-${room.id}`)).toBeCloseTo(initialRoomLeft, 3)
     expect(stage).not.toHaveClass('dragging')
 
-    fireEvent.pointerMove(svg, {
+    fireEvent.pointerMove(window, {
       pointerId: 21,
       clientX: 280,
       clientY: 220,
     })
     expect(getAnnotationLeft(`room-label-${room.id}`)).toBeCloseTo(initialRoomLeft, 3)
 
-    fireEvent.pointerUp(svg, {
+    fireEvent.pointerUp(window, {
       pointerId: 21,
       clientX: 280,
       clientY: 220,
@@ -134,13 +137,15 @@ describe('workspace interactions', () => {
       clientX: 160,
       clientY: 140,
     })
-    fireEvent.pointerMove(svg, {
+    fireEvent.pointerMove(window, {
       pointerId: 1,
       clientX: 220,
       clientY: 176,
     })
     expect(svg.getAttribute('viewBox')).toBe(initialViewBox)
-    fireEvent.pointerUp(svg, {
+    await waitFor(() => expect(screen.getByTestId('canvas-stage')).toHaveClass('canvas-stage--simplified-drag'))
+    expect(screen.queryByTestId(`room-label-${room.id}`)).not.toBeInTheDocument()
+    fireEvent.pointerUp(window, {
       pointerId: 1,
       clientX: 220,
       clientY: 176,
@@ -236,6 +241,50 @@ describe('workspace interactions', () => {
       expect(document.querySelectorAll('[data-testid^="wall-hit-"]').length).toBe(initialWallCount),
     )
     expect(getViewBoxRect(svg)).toEqual(viewBoxBeforeDelete)
+  })
+
+  it('keeps wall clicks editable while allowing wall drags to move the connected room outline', async () => {
+    const user = userEvent.setup()
+    const draft = createSeedState()
+    const room = draft.structures[0].floors[0].rooms[0]
+    const wall = room.segments[0]
+
+    renderEditor({ draft })
+
+    const svg = screen.getByLabelText('Interactive floorplan canvas')
+    const stage = screen.getByTestId('canvas-stage')
+    mockCanvasRect(svg)
+
+    fireEvent.click(screen.getByTestId(`wall-hit-${wall.id}`))
+    expect(screen.getByRole('dialog')).toHaveTextContent('Edit wall')
+    await user.click(screen.getByRole('button', { name: 'Close' }))
+
+    const initialRoomLeft = getAnnotationLeft(`room-label-${room.id}`)
+
+    fireEvent.pointerDown(screen.getByTestId(`wall-hit-${wall.id}`), {
+      button: 0,
+      pointerId: 32,
+      clientX: 144,
+      clientY: 128,
+    })
+    fireEvent.pointerMove(window, {
+      pointerId: 32,
+      clientX: 204,
+      clientY: 164,
+    })
+
+    await waitFor(() => expect(stage).toHaveClass('canvas-stage--simplified-drag'))
+    expect(screen.queryByTestId(`room-label-${room.id}`)).not.toBeInTheDocument()
+    expect(getGroupTranslate(`room-layer-${room.id}`).x).toBeGreaterThan(0)
+
+    fireEvent.pointerUp(window, {
+      pointerId: 32,
+      clientX: 204,
+      clientY: 164,
+    })
+
+    await waitFor(() => expect(getAnnotationLeft(`room-label-${room.id}`)).toBeGreaterThan(initialRoomLeft))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
   it('snaps dragged furniture to nearby wall segments when enabled', async () => {
@@ -968,6 +1017,20 @@ function getViewBoxRect(element: HTMLElement) {
 
 function getAnnotationLeft(testId: string) {
   return Number.parseFloat(screen.getByTestId(testId).getAttribute('style')?.match(/left:\s*([\d.]+)px/)?.[1] ?? '0')
+}
+
+function getGroupTranslate(testId: string) {
+  const transform = screen.getByTestId(testId).getAttribute('transform') ?? ''
+  const match = transform.match(/translate\(([-\d.]+)\s+([-\d.]+)\)/)
+
+  if (!match) {
+    return { x: 0, y: 0 }
+  }
+
+  return {
+    x: Number.parseFloat(match[1]),
+    y: Number.parseFloat(match[2]),
+  }
 }
 
 function getWallLinePosition(segmentId: string) {

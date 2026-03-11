@@ -1,6 +1,7 @@
 import {
   useEffect,
   useEffectEvent,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -54,6 +55,21 @@ type DragState =
       structureId: string
       floorId: string
       roomId: string
+      startX: number
+      startY: number
+      currentX: number
+      currentY: number
+      moved: boolean
+    }
+  | {
+      kind: 'wall'
+      pointerId: number
+      clientX: number
+      clientY: number
+      structureId: string
+      floorId: string
+      roomId: string
+      segmentId: string
       startX: number
       startY: number
       currentX: number
@@ -194,6 +210,7 @@ export function FloorplanCanvas() {
   const suppressTargetClickTimerRef = useRef<number | null>(null)
   const inlineWallInputRef = useRef<HTMLInputElement | null>(null)
   const annotationPlacementRef = useRef<Record<string, number>>({})
+  const [dragState, setDragState] = useState<DragState>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 })
   const [dragViewBounds, setDragViewBounds] = useState<Bounds | null>(null)
@@ -204,6 +221,9 @@ export function FloorplanCanvas() {
   const framingBounds = dragViewBounds ?? ui.camera.frameBounds
   const viewBox = getViewBox(framingBounds, ui.camera.zoom, ui.camera.offset, canvasAspectRatio)
   const labelScale = draft.labelFontSize / DEFAULT_LABEL_FONT_SIZE
+  const showSimplifiedDragPreview = Boolean(
+    dragState?.moved && (dragState.kind === 'room' || dragState.kind === 'wall'),
+  )
   const canvasAppearanceStyle = {
     '--canvas-wall-line-scale': String(draft.wallStrokeScale),
     '--canvas-label-font-size': `${draft.labelFontSize}px`,
@@ -215,66 +235,115 @@ export function FloorplanCanvas() {
   const canvasToolbarRect = getCanvasToolbarRect(viewBox, canvasMetrics)
   const canvasModeSwitchRect = getCanvasModeSwitchRect(viewBox, canvasMetrics)
   const canvasLegendRect = getCanvasLegendRect(viewBox, canvasMetrics)
-  const suggestedPreviews =
-    draft.showInferred && selectedRoom
-      ? placeSuggestionPreviews(
-          shapeSuggestions.map((suggestion) => buildSuggestionPreview(selectedRoom, suggestion)),
-          viewBox,
-          canvasMetrics,
-          [
-            expandRect(canvasToolbarRect, 0.8, 0.8),
-            expandRect(canvasModeSwitchRect, 0.4, 0.4),
-            expandRect(canvasLegendRect, 0.4, 0.4),
-          ],
-        )
-      : []
-  const reservedAnnotationRects = [
-    expandRect(svgRectToScreenRect(canvasToolbarRect, viewBox, canvasMetrics), 14, 14),
-    expandRect(svgRectToScreenRect(canvasModeSwitchRect, viewBox, canvasMetrics), 12, 12),
-    expandRect(svgRectToScreenRect(canvasLegendRect, viewBox, canvasMetrics), 12, 12),
-    ...suggestedPreviews.map((preview) => expandRect(svgRectToScreenRect(preview.actionRect, viewBox, canvasMetrics), 12, 12)),
-  ]
-  const placedAnnotations = buildCanvasAnnotations({
-    canvasMetrics,
-    viewBox,
-    activeStructureId: activeStructure?.id,
-    activeFloorId: activeFloor?.id ?? draft.activeFloorId,
-    visibleFloors,
-    selectedRoom,
-    selectedRoomGeometry,
-    selectedRoomId: draft.selectedRoomId,
-    selectedFurnitureId: draft.selectedFurnitureId,
-    showRoomFloorLabels: draft.showRoomFloorLabels,
-    showFurnitureLabels: draft.editorMode === 'furniture',
-    showWallLabels: draft.showWallLabels && draft.editorMode !== 'furniture',
-    labelFontSize: draft.labelFontSize,
-    reservedRects: reservedAnnotationRects,
-    hoveredTarget: ui.hoveredTarget,
-    focusedTarget: ui.focusedTarget,
-    selectionTargets: ui.selectionTargets,
-    editingWallSegmentId: inlineWallEditor?.segmentId ?? null,
-    previousCandidateIndices: annotationPlacementRef.current,
-  })
-  const visibleCornerOverlays = getVisibleCornerOverlays({
-    activeStructureId: activeStructure?.id,
-    activeFloorId: activeFloor?.id ?? draft.activeFloorId,
-    selectedRoom,
-    selectedRoomGeometry,
-    showAll: draft.showAngleLabels && draft.editorMode !== 'furniture',
-    hoveredTarget: ui.hoveredTarget,
-    viewBox,
-    canvasMetrics,
-  })
-  const selectableTargets = buildSelectableCanvasTargets({
-    activeStructureId: activeStructure?.id,
-    activeFloorId: activeFloor?.id ?? draft.activeFloorId,
-    visibleFloors,
-    selectedRoomGeometry,
-    selectedRoomId: draft.selectedRoomId,
-    viewBox,
-    canvasMetrics,
-    showFurniture: draft.editorMode === 'furniture',
-  })
+  const suggestedPreviews = useMemo(
+    () =>
+      !showSimplifiedDragPreview && draft.showInferred && selectedRoom
+        ? placeSuggestionPreviews(
+            shapeSuggestions.map((suggestion) => buildSuggestionPreview(selectedRoom, suggestion)),
+            viewBox,
+            canvasMetrics,
+            [
+              expandRect(canvasToolbarRect, 0.8, 0.8),
+              expandRect(canvasModeSwitchRect, 0.4, 0.4),
+              expandRect(canvasLegendRect, 0.4, 0.4),
+            ],
+          )
+        : [],
+    [
+      canvasLegendRect,
+      canvasMetrics,
+      canvasModeSwitchRect,
+      canvasToolbarRect,
+      draft.showInferred,
+      selectedRoom,
+      shapeSuggestions,
+      showSimplifiedDragPreview,
+      viewBox,
+    ],
+  )
+  const reservedAnnotationRects = useMemo(
+    () => [
+      expandRect(svgRectToScreenRect(canvasToolbarRect, viewBox, canvasMetrics), 14, 14),
+      expandRect(svgRectToScreenRect(canvasModeSwitchRect, viewBox, canvasMetrics), 12, 12),
+      expandRect(svgRectToScreenRect(canvasLegendRect, viewBox, canvasMetrics), 12, 12),
+      ...suggestedPreviews.map((preview) =>
+        expandRect(svgRectToScreenRect(preview.actionRect, viewBox, canvasMetrics), 12, 12),
+      ),
+    ],
+    [canvasLegendRect, canvasMetrics, canvasModeSwitchRect, canvasToolbarRect, suggestedPreviews, viewBox],
+  )
+  const placedAnnotations = useMemo(
+    () =>
+      showSimplifiedDragPreview
+        ? []
+        : buildCanvasAnnotations({
+            canvasMetrics,
+            viewBox,
+            activeStructureId: activeStructure?.id,
+            activeFloorId: activeFloor?.id ?? draft.activeFloorId,
+            visibleFloors,
+            selectedRoom,
+            selectedRoomGeometry,
+            selectedRoomId: draft.selectedRoomId,
+            selectedFurnitureId: draft.selectedFurnitureId,
+            showRoomFloorLabels: draft.showRoomFloorLabels,
+            showFurnitureLabels: draft.editorMode === 'furniture',
+            showWallLabels: draft.showWallLabels && draft.editorMode !== 'furniture',
+            labelFontSize: draft.labelFontSize,
+            reservedRects: reservedAnnotationRects,
+            hoveredTarget: ui.hoveredTarget,
+            focusedTarget: ui.focusedTarget,
+            selectionTargets: ui.selectionTargets,
+            editingWallSegmentId: inlineWallEditor?.segmentId ?? null,
+            previousCandidateIndices: annotationPlacementRef.current,
+          }),
+    [
+      activeFloor?.id,
+      activeStructure?.id,
+      canvasMetrics,
+      draft.activeFloorId,
+      draft.editorMode,
+      draft.labelFontSize,
+      draft.selectedFurnitureId,
+      draft.selectedRoomId,
+      draft.showRoomFloorLabels,
+      draft.showWallLabels,
+      inlineWallEditor?.segmentId,
+      reservedAnnotationRects,
+      selectedRoom,
+      selectedRoomGeometry,
+      showSimplifiedDragPreview,
+      ui.focusedTarget,
+      ui.hoveredTarget,
+      ui.selectionTargets,
+      viewBox,
+      visibleFloors,
+    ],
+  )
+  const visibleCornerOverlays = showSimplifiedDragPreview
+    ? []
+    : getVisibleCornerOverlays({
+        activeStructureId: activeStructure?.id,
+        activeFloorId: activeFloor?.id ?? draft.activeFloorId,
+        selectedRoom,
+        selectedRoomGeometry,
+        showAll: draft.showAngleLabels && draft.editorMode !== 'furniture',
+        hoveredTarget: ui.hoveredTarget,
+        viewBox,
+        canvasMetrics,
+      })
+  const selectableTargets = showSimplifiedDragPreview
+    ? []
+    : buildSelectableCanvasTargets({
+        activeStructureId: activeStructure?.id,
+        activeFloorId: activeFloor?.id ?? draft.activeFloorId,
+        visibleFloors,
+        selectedRoomGeometry,
+        selectedRoomId: draft.selectedRoomId,
+        viewBox,
+        canvasMetrics,
+        showFurniture: draft.editorMode === 'furniture',
+      })
   const canvasTarget: CanvasTarget = {
     kind: 'canvas',
     structureId: activeStructure?.id,
@@ -407,10 +476,14 @@ export function FloorplanCanvas() {
   }, [inlineWallEditor])
 
   useEffect(() => {
+    if (showSimplifiedDragPreview) {
+      return
+    }
+
     annotationPlacementRef.current = Object.fromEntries(
       placedAnnotations.map((annotation) => [getAnnotationPlacementKey(annotation), annotation.candidateIndex]),
     )
-  }, [placedAnnotations])
+  }, [placedAnnotations, showSimplifiedDragPreview])
 
   useEffect(() => {
     return () => {
@@ -449,23 +522,23 @@ export function FloorplanCanvas() {
     }
 
     if (activeDrag.kind === 'room') {
-      actions.mutateDraft((draftState) => {
-        const room = findRoomById(draftState, activeDrag.structureId, activeDrag.floorId, activeDrag.roomId)
-        if (!room) {
-          return
-        }
-
-        room.anchor.x = activeDrag.startX
-        room.anchor.y = activeDrag.startY
-      }, {
-        recordHistory: false,
-        touchStructure: false,
-      })
       suppressNextTargetClick({
         kind: 'room',
         structureId: activeDrag.structureId,
         floorId: activeDrag.floorId,
         roomId: activeDrag.roomId,
+      }, { persistUntilConsumed: true })
+      endDrag()
+      return
+    }
+
+    if (activeDrag.kind === 'wall') {
+      suppressNextTargetClick({
+        kind: 'wall',
+        structureId: activeDrag.structureId,
+        floorId: activeDrag.floorId,
+        roomId: activeDrag.roomId,
+        segmentId: activeDrag.segmentId,
       }, { persistUntilConsumed: true })
       endDrag()
       return
@@ -500,6 +573,256 @@ export function FloorplanCanvas() {
   }
   cancelActiveInteractionRef.current = cancelActiveInteraction
 
+  const handleDragPointerMove = useEffectEvent((event: PointerEvent) => {
+    if (!dragRef.current || !svgRef.current || dragRef.current.pointerId !== event.pointerId) {
+      return
+    }
+
+    const rect = svgRef.current.getBoundingClientRect()
+    const scaleX = viewBox.width / rect.width
+    const scaleY = viewBox.height / rect.height
+    const deltaX = (event.clientX - dragRef.current.clientX) * scaleX
+    const deltaY = (event.clientY - dragRef.current.clientY) * scaleY
+    const moved = Math.abs(event.clientX - dragRef.current.clientX) > 4 || Math.abs(event.clientY - dragRef.current.clientY) > 4
+    const activeDrag = dragRef.current
+
+    if (activeDrag.kind === 'canvas') {
+      const nextOffset = {
+        x: activeDrag.startOffsetX - deltaX,
+        y: activeDrag.startOffsetY - deltaY,
+      }
+      const nextDrag = {
+        ...activeDrag,
+        moved,
+        currentOffsetX: nextOffset.x,
+        currentOffsetY: nextOffset.y,
+      }
+      dragRef.current = nextDrag
+      setDragState(nextDrag)
+      actions.setCamera({
+        zoom: ui.camera.zoom,
+        offset: nextOffset,
+      })
+      return
+    }
+
+    if (activeDrag.kind === 'selection') {
+      const nextDrag = {
+        ...activeDrag,
+        moved,
+        currentClientX: event.clientX,
+        currentClientY: event.clientY,
+      }
+      dragRef.current = nextDrag
+      setDragState(nextDrag)
+      setSelectionBox(getSelectionRect(activeDrag.clientX, activeDrag.clientY, event.clientX, event.clientY, rect))
+      return
+    }
+
+    if (activeDrag.kind === 'room' || activeDrag.kind === 'wall') {
+      const nextDrag = {
+        ...activeDrag,
+        moved,
+        currentX: activeDrag.startX + deltaX,
+        currentY: activeDrag.startY - deltaY,
+      }
+      dragRef.current = nextDrag
+      setDragState(nextDrag)
+      return
+    }
+
+    const nextX = activeDrag.startX + deltaX
+    const nextY = activeDrag.startY - deltaY
+    const nextDrag = {
+      ...activeDrag,
+      moved,
+      currentX: nextX,
+      currentY: nextY,
+    }
+    dragRef.current = nextDrag
+    setDragState(nextDrag)
+    actions.mutateDraft((draftState) => {
+      const room = findRoomById(draftState, activeDrag.structureId, activeDrag.floorId, activeDrag.roomId)
+      const item = findFurnitureById(
+        draftState,
+        activeDrag.structureId,
+        activeDrag.floorId,
+        activeDrag.roomId,
+        activeDrag.furnitureId,
+      )
+
+      if (!room || !item) {
+        return
+      }
+
+      const nextPosition = snapFurnitureToRoom(
+        room,
+        {
+          ...item,
+          x: nextX,
+          y: nextY,
+        },
+        draftState.furnitureSnapStrength,
+        draftState.furnitureCornerSnapStrength,
+      )
+
+      item.x = nextPosition.x
+      item.y = nextPosition.y
+    }, {
+      recordHistory: false,
+      touchStructure: false,
+    })
+  })
+
+  const handleDragPointerUp = useEffectEvent((event: PointerEvent) => {
+    if (dragRef.current?.pointerId !== event.pointerId) {
+      return
+    }
+
+    const completedDrag = dragRef.current
+    endDrag(completedDrag)
+
+    if (completedDrag.kind === 'selection') {
+      suppressCanvasClickRef.current = true
+      setSelectionBox(null)
+
+      if (completedDrag.moved && svgRef.current) {
+        const rect = svgRef.current.getBoundingClientRect()
+        const marqueeRect = getSelectionRect(
+          completedDrag.clientX,
+          completedDrag.clientY,
+          completedDrag.currentClientX,
+          completedDrag.currentClientY,
+          rect,
+        )
+        const targets = selectableTargets
+          .filter((item) => rectContainsRect(marqueeRect, item.rect))
+          .map((item) => item.target)
+
+        actions.setSelectionTargets(targets, {
+          status:
+            targets.length > 0
+              ? `Box selected ${targets.length} canvas element${targets.length === 1 ? '' : 's'}.`
+              : 'No canvas elements were fully inside the selection box.',
+        })
+      }
+      return
+    }
+
+    if (completedDrag.moved && (completedDrag.kind === 'room' || completedDrag.kind === 'wall' || completedDrag.kind === 'furniture')) {
+      const delta = {
+        x: completedDrag.currentX - completedDrag.startX,
+        y: completedDrag.currentY - completedDrag.startY,
+      }
+
+      if (completedDrag.kind === 'room') {
+        suppressNextTargetClick({
+          kind: 'room',
+          structureId: completedDrag.structureId,
+          floorId: completedDrag.floorId,
+          roomId: completedDrag.roomId,
+        })
+        actions.moveRoom(completedDrag.structureId, completedDrag.floorId, completedDrag.roomId, delta)
+        return
+      }
+
+      if (completedDrag.kind === 'wall') {
+        suppressNextTargetClick({
+          kind: 'wall',
+          structureId: completedDrag.structureId,
+          floorId: completedDrag.floorId,
+          roomId: completedDrag.roomId,
+          segmentId: completedDrag.segmentId,
+        })
+        actions.moveRoom(completedDrag.structureId, completedDrag.floorId, completedDrag.roomId, delta)
+        return
+      }
+
+      actions.mutateDraft((draftState) => {
+        const item = findFurnitureById(
+          draftState,
+          completedDrag.structureId,
+          completedDrag.floorId,
+          completedDrag.roomId,
+          completedDrag.furnitureId,
+        )
+        if (!item) {
+          return
+        }
+
+        item.x = completedDrag.startX
+        item.y = completedDrag.startY
+      }, {
+        recordHistory: false,
+        touchStructure: false,
+      })
+      suppressNextTargetClick({
+        kind: 'furniture',
+        structureId: completedDrag.structureId,
+        floorId: completedDrag.floorId,
+        roomId: completedDrag.roomId,
+        furnitureId: completedDrag.furnitureId,
+      })
+      actions.moveFurniture(
+        completedDrag.structureId,
+        completedDrag.floorId,
+        completedDrag.roomId,
+        completedDrag.furnitureId,
+        delta,
+      )
+      return
+    }
+
+    if (completedDrag.kind === 'room') {
+      actions.openRenameDialog('room', {
+        structureId: completedDrag.structureId,
+        floorId: completedDrag.floorId,
+        roomId: completedDrag.roomId,
+      })
+      return
+    }
+
+    if (completedDrag.kind === 'wall') {
+      handleWallClick({
+        kind: 'wall',
+        structureId: completedDrag.structureId,
+        floorId: completedDrag.floorId,
+        roomId: completedDrag.roomId,
+        segmentId: completedDrag.segmentId,
+      })
+      return
+    }
+
+    if (completedDrag.kind === 'furniture') {
+      actions.openFurnitureDialog({
+        structureId: completedDrag.structureId,
+        floorId: completedDrag.floorId,
+        roomId: completedDrag.roomId,
+        furnitureId: completedDrag.furnitureId,
+      })
+    }
+  })
+
+  const handleDragPointerCancel = useEffectEvent((event: PointerEvent) => {
+    if (dragRef.current?.pointerId !== event.pointerId) {
+      return
+    }
+
+    cancelActiveInteraction()
+  })
+
+  useEffect(() => {
+    window.addEventListener('pointermove', handleDragPointerMove)
+    window.addEventListener('pointerup', handleDragPointerUp)
+    window.addEventListener('pointercancel', handleDragPointerCancel)
+
+    return () => {
+      window.removeEventListener('pointermove', handleDragPointerMove)
+      window.removeEventListener('pointerup', handleDragPointerUp)
+      window.removeEventListener('pointercancel', handleDragPointerCancel)
+    }
+  }, [])
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') {
@@ -518,6 +841,7 @@ export function FloorplanCanvas() {
       className={[
         'canvas-stage',
         isDragging ? 'dragging' : '',
+        showSimplifiedDragPreview ? 'canvas-stage--simplified-drag' : '',
         selectionBox ? 'selecting' : '',
         !draft.showLabelShapes ? 'canvas-stage--plain-labels' : '',
       ]
@@ -556,232 +880,6 @@ export function FloorplanCanvas() {
               target: ui.focusedTarget ?? canvasTarget,
             })
           }
-        }}
-        onPointerMove={(event) => {
-          if (!dragRef.current || !svgRef.current || dragRef.current.pointerId !== event.pointerId) {
-            return
-          }
-
-          const rect = svgRef.current.getBoundingClientRect()
-          const scaleX = viewBox.width / rect.width
-          const scaleY = viewBox.height / rect.height
-          const deltaX = (event.clientX - dragRef.current.clientX) * scaleX
-          const deltaY = (event.clientY - dragRef.current.clientY) * scaleY
-          const moved = Math.abs(event.clientX - dragRef.current.clientX) > 4 || Math.abs(event.clientY - dragRef.current.clientY) > 4
-          const activeDrag = dragRef.current
-
-          if (activeDrag.kind === 'canvas') {
-            const nextOffset = {
-              x: activeDrag.startOffsetX - deltaX,
-              y: activeDrag.startOffsetY - deltaY,
-            }
-            activeDrag.moved = moved
-            activeDrag.currentOffsetX = nextOffset.x
-            activeDrag.currentOffsetY = nextOffset.y
-            actions.setCamera({
-              zoom: ui.camera.zoom,
-              offset: nextOffset,
-            })
-            return
-          }
-
-          if (activeDrag.kind === 'selection') {
-            activeDrag.moved = moved
-            activeDrag.currentClientX = event.clientX
-            activeDrag.currentClientY = event.clientY
-            setSelectionBox(getSelectionRect(activeDrag.clientX, activeDrag.clientY, event.clientX, event.clientY, rect))
-            return
-          }
-
-          if (activeDrag.kind === 'room') {
-            const nextX = activeDrag.startX + deltaX
-            const nextY = activeDrag.startY - deltaY
-            activeDrag.moved = moved
-            activeDrag.currentX = nextX
-            activeDrag.currentY = nextY
-            actions.mutateDraft((draftState) => {
-              const room = findRoomById(draftState, activeDrag.structureId, activeDrag.floorId, activeDrag.roomId)
-              if (!room) {
-                return
-              }
-
-              room.anchor.x = nextX
-              room.anchor.y = nextY
-            }, {
-              recordHistory: false,
-              touchStructure: false,
-            })
-            return
-          }
-
-          const nextX = activeDrag.startX + deltaX
-          const nextY = activeDrag.startY - deltaY
-          activeDrag.moved = moved
-          activeDrag.currentX = nextX
-          activeDrag.currentY = nextY
-          actions.mutateDraft((draftState) => {
-            const room = findRoomById(draftState, activeDrag.structureId, activeDrag.floorId, activeDrag.roomId)
-            const item = findFurnitureById(
-              draftState,
-              activeDrag.structureId,
-              activeDrag.floorId,
-              activeDrag.roomId,
-              activeDrag.furnitureId,
-            )
-
-            if (!room || !item) {
-              return
-            }
-
-            const nextPosition = snapFurnitureToRoom(
-              room,
-              {
-                ...item,
-                x: nextX,
-                y: nextY,
-              },
-              draftState.furnitureSnapStrength,
-              draftState.furnitureCornerSnapStrength,
-            )
-
-            item.x = nextPosition.x
-            item.y = nextPosition.y
-          }, {
-            recordHistory: false,
-            touchStructure: false,
-          })
-        }}
-        onPointerUp={(event) => {
-          if (dragRef.current?.pointerId !== event.pointerId) {
-            return
-          }
-
-          const completedDrag = dragRef.current
-          endDrag()
-
-          if (completedDrag.kind === 'selection') {
-            suppressCanvasClickRef.current = true
-            setSelectionBox(null)
-
-            if (completedDrag.moved && svgRef.current) {
-              const rect = svgRef.current.getBoundingClientRect()
-              const marqueeRect = getSelectionRect(
-                completedDrag.clientX,
-                completedDrag.clientY,
-                completedDrag.currentClientX,
-                completedDrag.currentClientY,
-                rect,
-              )
-              const targets = selectableTargets
-                .filter((item) => rectContainsRect(marqueeRect, item.rect))
-                .map((item) => item.target)
-
-              actions.setSelectionTargets(targets, {
-                status:
-                  targets.length > 0
-                    ? `Box selected ${targets.length} canvas element${targets.length === 1 ? '' : 's'}.`
-                    : 'No canvas elements were fully inside the selection box.',
-              })
-            }
-            return
-          }
-
-          if (completedDrag.moved && (completedDrag.kind === 'room' || completedDrag.kind === 'furniture')) {
-            const delta = {
-              x: completedDrag.currentX - completedDrag.startX,
-              y: completedDrag.currentY - completedDrag.startY,
-            }
-
-            actions.mutateDraft((draftState) => {
-              if (completedDrag.kind === 'room') {
-                const room = findRoomById(draftState, completedDrag.structureId, completedDrag.floorId, completedDrag.roomId)
-                if (!room) {
-                  return
-                }
-
-                room.anchor.x = completedDrag.startX
-                room.anchor.y = completedDrag.startY
-                return
-              }
-
-              const item = findFurnitureById(
-                draftState,
-                completedDrag.structureId,
-                completedDrag.floorId,
-                completedDrag.roomId,
-                completedDrag.furnitureId,
-              )
-              if (!item) {
-                return
-              }
-
-              item.x = completedDrag.startX
-              item.y = completedDrag.startY
-            }, {
-              recordHistory: false,
-              touchStructure: false,
-            })
-            suppressNextTargetClick(
-              completedDrag.kind === 'room'
-                ? {
-                    kind: 'room',
-                    structureId: completedDrag.structureId,
-                    floorId: completedDrag.floorId,
-                    roomId: completedDrag.roomId,
-                  }
-                : {
-                    kind: 'furniture',
-                    structureId: completedDrag.structureId,
-                    floorId: completedDrag.floorId,
-                    roomId: completedDrag.roomId,
-                    furnitureId: completedDrag.furnitureId,
-                  },
-            )
-            if (completedDrag.kind === 'room') {
-              actions.moveRoom(completedDrag.structureId, completedDrag.floorId, completedDrag.roomId, delta)
-              return
-            }
-
-            actions.moveFurniture(
-              completedDrag.structureId,
-              completedDrag.floorId,
-              completedDrag.roomId,
-              completedDrag.furnitureId,
-              delta,
-            )
-            return
-          }
-
-          if (completedDrag.kind === 'room') {
-            actions.openRenameDialog('room', {
-              structureId: completedDrag.structureId,
-              floorId: completedDrag.floorId,
-              roomId: completedDrag.roomId,
-            })
-            return
-          }
-
-          if (completedDrag.kind === 'furniture') {
-            actions.openFurnitureDialog({
-              structureId: completedDrag.structureId,
-              floorId: completedDrag.floorId,
-              roomId: completedDrag.roomId,
-              furnitureId: completedDrag.furnitureId,
-            })
-          }
-        }}
-        onPointerCancel={(event) => {
-          if (dragRef.current?.pointerId !== event.pointerId) {
-            return
-          }
-
-          cancelActiveInteraction()
-        }}
-        onLostPointerCapture={() => {
-          dragRef.current = null
-          setIsDragging(false)
-          setDragViewBounds(null)
-          setSelectionBox(null)
         }}
       >
         <defs>
@@ -850,7 +948,7 @@ export function FloorplanCanvas() {
             actions.setFocusedTarget(canvasTarget)
           }}
         />
-        {draft.showGrid ? (
+        {!showSimplifiedDragPreview && draft.showGrid ? (
           <rect
             className="canvas-grid"
             x={viewBox.x}
@@ -861,10 +959,12 @@ export function FloorplanCanvas() {
           />
         ) : null}
 
-        <g className="origin-crosshair">
-          <line x1={-1} x2={1} y1={0} y2={0} />
-          <line x1={0} x2={0} y1={-1} y2={1} />
-        </g>
+        {!showSimplifiedDragPreview ? (
+          <g className="origin-crosshair">
+            <line x1={-1} x2={1} y1={0} y2={0} />
+            <line x1={0} x2={0} y1={-1} y2={1} />
+          </g>
+        ) : null}
 
         {visibleFloors.map((floor) => (
           <FloorLayer
@@ -894,7 +994,7 @@ export function FloorplanCanvas() {
           </g>
         ))}
 
-        {selectedRoom && selectedRoomGeometry
+        {!showSimplifiedDragPreview && selectedRoom && selectedRoomGeometry
           ? selectedRoomGeometry.segments.map((segment) => {
               const target: CanvasTarget =
                 activeStructure && activeFloor
@@ -924,6 +1024,28 @@ export function FloorplanCanvas() {
                     x2={segment.end.x}
                     y1={-segment.start.y}
                     y2={-segment.end.y}
+                    onPointerDown={(event) => {
+                      if (target.kind !== 'wall') {
+                        return
+                      }
+
+                      actions.selectTarget(target)
+                      beginDrag(event, {
+                        kind: 'wall',
+                        pointerId: event.pointerId,
+                        clientX: event.clientX,
+                        clientY: event.clientY,
+                        structureId: target.structureId,
+                        floorId: target.floorId,
+                        roomId: target.roomId,
+                        segmentId: target.segmentId,
+                        startX: selectedRoom.anchor.x,
+                        startY: selectedRoom.anchor.y,
+                        currentX: selectedRoom.anchor.x,
+                        currentY: selectedRoom.anchor.y,
+                        moved: false,
+                      })
+                    }}
                     onClick={() => handleWallClick(target)}
                     onContextMenu={(event) => openContextMenu(event, target)}
                     onMouseEnter={() => actions.setHoveredTarget(target)}
@@ -934,7 +1056,7 @@ export function FloorplanCanvas() {
             })
           : null}
 
-        {selectedRoom && selectedRoomGeometry && activeStructure && activeFloor
+        {!showSimplifiedDragPreview && selectedRoom && selectedRoomGeometry && activeStructure && activeFloor
           ? getRoomCorners(selectedRoom).map((corner) => {
               const target: CanvasTarget = {
                 kind: 'corner',
@@ -961,7 +1083,13 @@ export function FloorplanCanvas() {
             })
           : null}
 
-        {draft.editorMode === 'rooms' && selectedRoom && selectedRoomGeometry && activeStructure && activeFloor && !selectedRoomGeometry.closed
+        {!showSimplifiedDragPreview &&
+        draft.editorMode === 'rooms' &&
+        selectedRoom &&
+        selectedRoomGeometry &&
+        activeStructure &&
+        activeFloor &&
+        !selectedRoomGeometry.closed
           ? [
               selectedRoomGeometry.segments[0]
                 ? {
@@ -1036,34 +1164,37 @@ export function FloorplanCanvas() {
         />
       ) : null}
 
-      {visibleCornerOverlays.map((cornerOverlay) => (
-        <div className="canvas-hover-layer" data-testid={`corner-hover-overlay-${cornerOverlay.target.segmentId}`} key={cornerOverlay.target.segmentId}>
-          <svg
-            aria-hidden="true"
-            className="canvas-corner-hover-svg"
-            preserveAspectRatio="none"
-            viewBox={`0 0 ${canvasMetrics.widthPx} ${canvasMetrics.heightPx}`}
-          >
-            <path className="canvas-corner-hover-arc-shadow" d={cornerOverlay.arcPath} />
-            <path
-              className="canvas-corner-hover-arc"
-              d={cornerOverlay.arcPath}
-              data-testid={`corner-hover-arc-${cornerOverlay.target.segmentId}`}
-            />
-          </svg>
-          <div
-            className="canvas-corner-hover-label"
-            style={{
-              left: `${cornerOverlay.labelPoint.x}px`,
-              top: `${cornerOverlay.labelPoint.y}px`,
-            }}
-          >
-            {cornerOverlay.text}
-          </div>
-        </div>
-      ))}
+      {!showSimplifiedDragPreview
+        ? visibleCornerOverlays.map((cornerOverlay) => (
+            <div className="canvas-hover-layer" data-testid={`corner-hover-overlay-${cornerOverlay.target.segmentId}`} key={cornerOverlay.target.segmentId}>
+              <svg
+                aria-hidden="true"
+                className="canvas-corner-hover-svg"
+                preserveAspectRatio="none"
+                viewBox={`0 0 ${canvasMetrics.widthPx} ${canvasMetrics.heightPx}`}
+              >
+                <path className="canvas-corner-hover-arc-shadow" d={cornerOverlay.arcPath} />
+                <path
+                  className="canvas-corner-hover-arc"
+                  d={cornerOverlay.arcPath}
+                  data-testid={`corner-hover-arc-${cornerOverlay.target.segmentId}`}
+                />
+              </svg>
+              <div
+                className="canvas-corner-hover-label"
+                style={{
+                  left: `${cornerOverlay.labelPoint.x}px`,
+                  top: `${cornerOverlay.labelPoint.y}px`,
+                }}
+              >
+                {cornerOverlay.text}
+              </div>
+            </div>
+          ))
+        : null}
 
-      <div aria-label="Canvas view controls" className="canvas-toolbar">
+      {!showSimplifiedDragPreview ? (
+        <div aria-label="Canvas view controls" className="canvas-toolbar">
         <div className="canvas-toolbar-row">
           <p className="canvas-toolbar-kicker">View</p>
           <button
@@ -1133,22 +1264,26 @@ export function FloorplanCanvas() {
             <span>Angles</span>
           </label>
         </div>
-      </div>
+        </div>
+      ) : null}
 
-      <div aria-label="Canvas mode selector" className="canvas-mode-switch" data-testid="canvas-mode-switch">
-        {Object.entries(MODE_LABELS).map(([mode, label]) => (
-          <button
-            key={mode}
-            className={draft.editorMode === mode ? 'mode-pill active' : 'mode-pill'}
-            onClick={() => actions.setEditorMode(mode as keyof typeof MODE_LABELS)}
-            type="button"
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      {!showSimplifiedDragPreview ? (
+        <div aria-label="Canvas mode selector" className="canvas-mode-switch" data-testid="canvas-mode-switch">
+          {Object.entries(MODE_LABELS).map(([mode, label]) => (
+            <button
+              key={mode}
+              className={draft.editorMode === mode ? 'mode-pill active' : 'mode-pill'}
+              onClick={() => actions.setEditorMode(mode as keyof typeof MODE_LABELS)}
+              type="button"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      ) : null}
 
-      <div aria-label="Canvas legend" className="canvas-key">
+      {!showSimplifiedDragPreview ? (
+        <div aria-label="Canvas legend" className="canvas-key">
         <div className="canvas-key__item">
           <span className="canvas-key__line" />
           <span>Wall</span>
@@ -1162,7 +1297,8 @@ export function FloorplanCanvas() {
           <span>{`Grid ${formatFeet(GRID_MINOR_SIZE_FEET)} square`}</span>
         </div>
         <p className="canvas-key__note">{`Bold line every ${formatFeet(GRID_MAJOR_SIZE_FEET)}`}</p>
-      </div>
+        </div>
+      ) : null}
 
       {placedAnnotations.length > 0 ? (
         <div className="canvas-annotation-layer">
@@ -1366,6 +1502,10 @@ export function FloorplanCanvas() {
 
   function handleWallClick(target: CanvasTarget) {
     if (target.kind !== 'wall') {
+      return
+    }
+
+    if (consumeSuppressedTargetClick(target)) {
       return
     }
 
@@ -1625,12 +1765,14 @@ export function FloorplanCanvas() {
     }
 
     dragRef.current = dragState
+    setDragState(dragState)
     setIsDragging(true)
   }
 
   function endDrag() {
     setDragViewBounds(null)
     dragRef.current = null
+    setDragState(null)
     setIsDragging(false)
   }
 
@@ -1679,6 +1821,8 @@ export function FloorplanCanvas() {
     const active = draft.selectedRoomId === room.id
     const hovered = matchesTarget(ui.hoveredTarget, roomTarget)
     const multiSelected = isTargetSelected(ui.selectionTargets, roomTarget)
+    const roomDragDelta = getDraggedRoomDelta(dragState, activeStructure.id, floor.id, room.id)
+    const roomTransform = roomDragDelta ? `translate(${roomDragDelta.x} ${-roomDragDelta.y})` : undefined
 
     const roomHandlers = {
       onPointerDown: (event: ReactPointerEvent<SVGPathElement>) => {
@@ -1715,8 +1859,12 @@ export function FloorplanCanvas() {
     }
 
     return (
-      <g className={active || multiSelected ? 'room-layer active' : 'room-layer'}>
-        {openRoomHitPath ? (
+      <g
+        className={active || multiSelected ? 'room-layer active' : 'room-layer'}
+        data-testid={`room-layer-${room.id}`}
+        transform={roomTransform}
+      >
+        {!showSimplifiedDragPreview && openRoomHitPath ? (
           <path
             className="room-hit-area"
             d={openRoomHitPath}
@@ -1726,7 +1874,7 @@ export function FloorplanCanvas() {
             {...roomHandlers}
           />
         ) : null}
-        {geometry.closed ? (
+        {!showSimplifiedDragPreview && geometry.closed ? (
           <path
             className={['room-fill', hovered ? 'hovered' : '', multiSelected ? 'selected' : ''].filter(Boolean).join(' ')}
             d={`${path} Z`}
@@ -1736,7 +1884,7 @@ export function FloorplanCanvas() {
             stroke="none"
             {...roomHandlers}
           />
-        ) : (
+        ) : !showSimplifiedDragPreview ? (
           <path
             className={['room-stroke', 'open', hovered ? 'hovered' : '', multiSelected ? 'selected' : ''].filter(Boolean).join(' ')}
             d={path}
@@ -1746,7 +1894,7 @@ export function FloorplanCanvas() {
             strokeWidth={0.92}
             {...roomHandlers}
           />
-        )}
+        ) : null}
 
         {geometry.segments.map((segment) => (
           <line
@@ -1848,6 +1996,28 @@ export function FloorplanCanvas() {
     }
 
     return <path className="suggested-path" d={pointsToPath(points)} data-testid={dataTestId} />
+  }
+}
+
+function getDraggedRoomDelta(
+  dragState: DragState,
+  structureId: string,
+  floorId: string,
+  roomId: string,
+): Point | null {
+  if (
+    !dragState ||
+    (dragState.kind !== 'room' && dragState.kind !== 'wall') ||
+    dragState.structureId !== structureId ||
+    dragState.floorId !== floorId ||
+    dragState.roomId !== roomId
+  ) {
+    return null
+  }
+
+  return {
+    x: dragState.currentX - dragState.startX,
+    y: dragState.currentY - dragState.startY,
   }
 }
 
