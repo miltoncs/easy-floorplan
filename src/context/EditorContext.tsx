@@ -53,6 +53,7 @@ import {
   makeWorkspaceExportFilename,
 } from '../lib/serialization'
 import type {
+  Bounds,
   CanvasTarget,
   ContextMenuState,
   DialogState,
@@ -73,6 +74,42 @@ const DEFAULT_CAMERA = {
   offset: { x: 0, y: 0 },
 }
 const HISTORY_LIMIT = 100
+
+function getVisibleFloorsForDraft(draft: DraftState) {
+  const activeStructure = findActiveStructure(draft)
+  const activeFloor = findActiveFloor(draft)
+
+  if (!activeStructure) {
+    return []
+  }
+
+  if (draft.editorMode === 'stacked') {
+    return [...activeStructure.floors].sort((left, right) =>
+      left.id === draft.activeFloorId ? 1 : right.id === draft.activeFloorId ? -1 : 0,
+    )
+  }
+
+  return activeFloor ? [activeFloor] : []
+}
+
+function getViewBoundsForDraft(draft: DraftState) {
+  return computeVisibleBounds(getVisibleFloorsForDraft(draft))
+}
+
+function createCamera(frameBounds: Bounds): EditorUiState['camera'] {
+  return {
+    ...DEFAULT_CAMERA,
+    frameBounds,
+  }
+}
+
+function shouldRefreshCameraFrame(previousDraft: DraftState, nextDraft: DraftState) {
+  return (
+    previousDraft.activeStructureId !== nextDraft.activeStructureId ||
+    previousDraft.activeFloorId !== nextDraft.activeFloorId ||
+    previousDraft.editorMode !== nextDraft.editorMode
+  )
+}
 
 type MutateDraftOptions = {
   status?: string
@@ -125,7 +162,7 @@ type EditorAction =
     }
   | {
       type: 'setCamera'
-      camera: EditorUiState['camera']
+      camera: Omit<EditorUiState['camera'], 'frameBounds'> & { frameBounds?: EditorUiState['camera']['frameBounds'] }
     }
   | {
       type: 'resetCamera'
@@ -142,12 +179,13 @@ type EditorAction =
 
 function createInitialState(initialDraft?: DraftState): EditorState {
   const draft = ensureSelections(initialDraft ?? loadDraftState() ?? createSeedState())
+  const viewBounds = getViewBoundsForDraft(draft)
 
   return {
     draft,
     ui: {
       status: DEFAULT_STATUS,
-      camera: DEFAULT_CAMERA,
+      camera: createCamera(viewBounds),
       dialog: null,
       contextMenu: null,
       hoveredTarget: null,
@@ -167,6 +205,7 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
       const nextDraft = structuredClone(state.draft)
       action.recipe(nextDraft)
       const prepared = ensureSelections(nextDraft)
+      const nextViewBounds = getViewBoundsForDraft(prepared)
 
       if (action.options?.touchStructure !== false) {
         const structure = findActiveStructure(prepared)
@@ -176,13 +215,19 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
       }
 
       const shouldRecordHistory = action.options?.recordHistory ?? true
+      const nextCamera = action.options?.resetCamera
+        ? createCamera(nextViewBounds)
+        : {
+            ...state.ui.camera,
+            frameBounds: shouldRefreshCameraFrame(state.draft, prepared) ? nextViewBounds : state.ui.camera.frameBounds,
+          }
 
       return {
         draft: prepared,
         ui: {
           ...state.ui,
           status: action.options?.status ?? state.ui.status,
-          camera: action.options?.resetCamera ? DEFAULT_CAMERA : state.ui.camera,
+          camera: nextCamera,
           contextMenu: null,
         },
         history: shouldRecordHistory
@@ -193,13 +238,16 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
           : state.history,
       }
     }
-    case 'replaceDraft':
+    case 'replaceDraft': {
+      const nextDraft = ensureSelections(action.draft)
+      const nextViewBounds = getViewBoundsForDraft(nextDraft)
+
       return {
-        draft: ensureSelections(action.draft),
+        draft: nextDraft,
         ui: {
           ...state.ui,
           status: action.status,
-          camera: DEFAULT_CAMERA,
+          camera: createCamera(nextViewBounds),
           dialog: null,
           contextMenu: null,
           focusedTarget: null,
@@ -212,6 +260,7 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
               future: [],
             },
       }
+    }
     case 'setStatus':
       return {
         ...state,
@@ -287,6 +336,7 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
           camera: {
             zoom: clamp(action.camera.zoom, 0.45, 3.5),
             offset: action.camera.offset,
+            frameBounds: action.camera.frameBounds ?? state.ui.camera.frameBounds,
           },
         },
       }
@@ -295,7 +345,7 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
         ...state,
         ui: {
           ...state.ui,
-          camera: DEFAULT_CAMERA,
+          camera: createCamera(getViewBoundsForDraft(state.draft)),
         },
       }
     case 'undo': {
@@ -305,11 +355,18 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
         return state
       }
 
+      const nextDraft = ensureSelections(structuredClone(previousDraft))
+      const nextViewBounds = getViewBoundsForDraft(nextDraft)
+
       return {
-        draft: ensureSelections(structuredClone(previousDraft)),
+        draft: nextDraft,
         ui: {
           ...state.ui,
           status: 'Undid last change.',
+          camera: {
+            ...state.ui.camera,
+            frameBounds: shouldRefreshCameraFrame(state.draft, nextDraft) ? nextViewBounds : state.ui.camera.frameBounds,
+          },
           dialog: null,
           contextMenu: null,
           hoveredTarget: null,
@@ -329,11 +386,18 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
         return state
       }
 
+      const prepared = ensureSelections(structuredClone(nextDraft))
+      const nextViewBounds = getViewBoundsForDraft(prepared)
+
       return {
-        draft: ensureSelections(structuredClone(nextDraft)),
+        draft: prepared,
         ui: {
           ...state.ui,
           status: 'Redid last change.',
+          camera: {
+            ...state.ui.camera,
+            frameBounds: shouldRefreshCameraFrame(state.draft, prepared) ? nextViewBounds : state.ui.camera.frameBounds,
+          },
           dialog: null,
           contextMenu: null,
           hoveredTarget: null,
@@ -438,8 +502,8 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
   )
   const viewBounds = useMemo(() => computeVisibleBounds(visibleFloors), [visibleFloors])
   const viewBox = useMemo(
-    () => getViewBox(viewBounds, state.ui.camera.zoom, state.ui.camera.offset),
-    [state.ui.camera.offset, state.ui.camera.zoom, viewBounds],
+    () => getViewBox(state.ui.camera.frameBounds, state.ui.camera.zoom, state.ui.camera.offset),
+    [state.ui.camera.frameBounds, state.ui.camera.offset, state.ui.camera.zoom],
   )
   const structureRoomCount =
     activeStructure?.floors.reduce((sum, floor) => sum + floor.rooms.length, 0) ?? 0
@@ -1272,7 +1336,8 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
         dispatch({ type: 'setStatus', status })
       }
     },
-    setCamera: (camera: EditorUiState['camera']) => dispatch({ type: 'setCamera', camera }),
+    setCamera: (camera: Omit<EditorUiState['camera'], 'frameBounds'> & { frameBounds?: EditorUiState['camera']['frameBounds'] }) =>
+      dispatch({ type: 'setCamera', camera }),
     resetCamera: () => dispatch({ type: 'resetCamera' }),
     undo: () => dispatch({ type: 'undo' }),
     redo: () => dispatch({ type: 'redo' }),

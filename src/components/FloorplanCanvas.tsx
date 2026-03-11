@@ -17,13 +17,11 @@ import {
   findSegmentById,
   getRoomLabelPoint,
   getViewBox,
-  padBounds,
 } from '../lib/blueprint'
 import { parseDistanceInput } from '../lib/distance'
 import { MODE_LABELS } from '../lib/editorModes'
 import {
   addPolar,
-  boundsSize,
   clamp,
   formatCornerAngleBadge,
   formatFeet,
@@ -203,8 +201,8 @@ export function FloorplanCanvas() {
   const [inlineWallEditor, setInlineWallEditor] = useState<InlineWallEditorState | null>(null)
   const canvasAspectRatio =
     canvasSize.width > 0 && canvasSize.height > 0 ? canvasSize.width / canvasSize.height : undefined
-  const effectiveViewBounds = dragViewBounds ?? viewBounds
-  const viewBox = getViewBox(effectiveViewBounds, ui.camera.zoom, ui.camera.offset, canvasAspectRatio)
+  const framingBounds = dragViewBounds ?? ui.camera.frameBounds
+  const viewBox = getViewBox(framingBounds, ui.camera.zoom, ui.camera.offset, canvasAspectRatio)
   const labelScale = draft.labelFontSize / DEFAULT_LABEL_FONT_SIZE
   const canvasAppearanceStyle = {
     '--canvas-wall-line-scale': String(draft.wallStrokeScale),
@@ -659,7 +657,7 @@ export function FloorplanCanvas() {
           }
 
           const completedDrag = dragRef.current
-          endDrag(completedDrag)
+          endDrag()
 
           if (completedDrag.kind === 'selection') {
             suppressCanvasClickRef.current = true
@@ -1623,18 +1621,14 @@ export function FloorplanCanvas() {
     clearSuppressedTargetClick()
 
     if (dragState.kind === 'room' || dragState.kind === 'furniture') {
-      setDragViewBounds(viewBounds)
+      setDragViewBounds(ui.camera.frameBounds)
     }
 
     dragRef.current = dragState
     setIsDragging(true)
   }
 
-  function endDrag(completedDrag?: Exclude<DragState, null>) {
-    if (dragViewBounds && completedDrag && (completedDrag.kind === 'room' || completedDrag.kind === 'furniture')) {
-      actions.setCamera(getCameraForViewBox(viewBounds, viewBox, canvasAspectRatio))
-    }
-
+  function endDrag() {
     setDragViewBounds(null)
     dragRef.current = null
     setIsDragging(false)
@@ -2066,28 +2060,6 @@ function getCanvasMetrics(viewBox: { width: number; height: number }, canvasSize
     heightPx,
     unitX: viewBox.width / widthPx,
     unitY: viewBox.height / heightPx,
-  }
-}
-
-function getCameraForViewBox(
-  bounds: Bounds,
-  targetViewBox: { x: number; y: number; width: number; height: number },
-  aspectRatio?: number,
-) {
-  const paddedSize = boundsSize(padBounds(bounds, 6))
-  const zoom = clamp(
-    Math.max(paddedSize.width / targetViewBox.width, paddedSize.height / targetViewBox.height),
-    0.45,
-    3.5,
-  )
-  const baseViewBox = getViewBox(bounds, zoom, { x: 0, y: 0 }, aspectRatio)
-
-  return {
-    zoom,
-    offset: {
-      x: targetViewBox.x - baseViewBox.x,
-      y: targetViewBox.y - baseViewBox.y,
-    },
   }
 }
 

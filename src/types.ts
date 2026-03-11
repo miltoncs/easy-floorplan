@@ -154,6 +154,7 @@ export type DialogState = RenameDialogState | WallDialogState | CornerDialogStat
 export type CameraState = {
   zoom: number
   offset: Point
+  frameBounds: Bounds
 }
 
 export type EditorUiState = {

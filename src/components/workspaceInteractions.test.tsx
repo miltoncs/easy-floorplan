@@ -197,6 +197,47 @@ describe('workspace interactions', () => {
     expect(screen.queryByTestId(`anchor-${openEndWall.id}`)).not.toBeInTheDocument()
   })
 
+  it('keeps the current viewBox when walls are added or deleted', async () => {
+    const user = userEvent.setup()
+    const draft = createSeedState()
+    const room = draft.structures[0].floors[0].rooms[0]
+
+    renderEditor({ draft })
+
+    const svg = screen.getByLabelText('Interactive floorplan canvas')
+    mockCanvasRect(svg)
+
+    svg.dispatchEvent(new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 220,
+      clientY: 180,
+      deltaY: -120,
+    }))
+
+    await waitFor(() => expect(screen.getByText('102%')).toBeInTheDocument())
+
+    const initialWallCount = document.querySelectorAll('[data-testid^="wall-hit-"]').length
+    const viewBoxBeforeAdd = getViewBoxRect(svg)
+
+    await user.click(screen.getByRole('button', { name: 'Add wall' }))
+    await waitFor(() =>
+      expect(document.querySelectorAll('[data-testid^="wall-hit-"]').length).toBe(initialWallCount + 1),
+    )
+    expect(getViewBoxRect(svg)).toEqual(viewBoxBeforeAdd)
+
+    const viewBoxBeforeDelete = getViewBoxRect(svg)
+    fireEvent.contextMenu(screen.getByTestId(`wall-label-${room.segments[0].id}`))
+    const menu = screen.getByRole('menu')
+    expect(menu).toHaveTextContent('Delete wall')
+    await user.click(within(menu).getByRole('menuitem', { name: 'Delete wall' }))
+
+    await waitFor(() =>
+      expect(document.querySelectorAll('[data-testid^="wall-hit-"]').length).toBe(initialWallCount),
+    )
+    expect(getViewBoxRect(svg)).toEqual(viewBoxBeforeDelete)
+  })
+
   it('snaps dragged furniture to nearby wall segments when enabled', async () => {
     const draft = createSeedState()
     const room = createRoom({
@@ -907,6 +948,14 @@ function mockCanvasRect(element: HTMLElement) {
 }
 
 function getViewBoxCenter(element: HTMLElement) {
+  const { x, y, width, height } = getViewBoxRect(element)
+  return {
+    x: x + width / 2,
+    y: y + height / 2,
+  }
+}
+
+function getViewBoxRect(element: HTMLElement) {
   const viewBox = element.getAttribute('viewBox')
 
   if (!viewBox) {
@@ -914,10 +963,7 @@ function getViewBoxCenter(element: HTMLElement) {
   }
 
   const [x, y, width, height] = viewBox.split(' ').map((value) => Number.parseFloat(value))
-  return {
-    x: x + width / 2,
-    y: y + height / 2,
-  }
+  return { x, y, width, height }
 }
 
 function getAnnotationLeft(testId: string) {
