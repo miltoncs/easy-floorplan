@@ -48,6 +48,7 @@ import {
   clamp,
   deleteRoomSegmentPreservingGeometry,
   normalizeAngle,
+  rotateRoom as applyRoomRotation,
   roomToGeometry,
   snapFurnitureToRoom,
   validateRoomWalls,
@@ -72,6 +73,7 @@ import type {
   EntityIds,
   Furniture,
   NamedEntityKind,
+  RotationDirection,
   Room,
   RoomSuggestion,
 } from '../types'
@@ -681,6 +683,15 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
       },
     })
 
+  const openRoomRotationDialog = (ids: EntityIds) =>
+    dispatch({
+      type: 'openDialog',
+      dialog: {
+        kind: 'room-rotation',
+        ids,
+      },
+    })
+
   const renameEntity = (entityKind: NamedEntityKind, ids: EntityIds, nextName: string) => {
     const validation = validateName(nextName)
 
@@ -831,6 +842,50 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
 
     dispatch({ type: 'closeDialog' })
     return validation
+  }
+
+  const rotateRoom = (ids: EntityIds, values: { degrees: number; direction: RotationDirection }) => {
+    if (!ids.structureId || !ids.floorId || !ids.roomId) {
+      return {
+        valid: false,
+        error: 'Room could not be found.',
+      }
+    }
+
+    const clampedDegrees = clamp(values.degrees, 0, 360)
+    const effectiveDegrees = clampedDegrees % 360
+
+    if (effectiveDegrees === 0) {
+      dispatch({ type: 'closeDialog' })
+      setStatus('Room rotation unchanged.')
+      return {
+        valid: true,
+        error: null,
+      }
+    }
+
+    const { structureId, floorId, roomId } = ids
+    const signedDegrees = values.direction === 'clockwise' ? -effectiveDegrees : effectiveDegrees
+
+    mutateDraft((draft) => {
+      const room = findRoomById(draft, structureId, floorId, roomId)
+      if (!room) {
+        return
+      }
+
+      applyRoomRotation(room, signedDegrees)
+    }, {
+      status:
+        effectiveDegrees === 180
+          ? 'Room rotated 180°.'
+          : `Room rotated ${effectiveDegrees}° ${values.direction}.`,
+    })
+
+    dispatch({ type: 'closeDialog' })
+    return {
+      valid: true,
+      error: null,
+    }
   }
 
   const moveRoom = (structureId: string, floorId: string, roomId: string, delta: { x: number; y: number }) => {
@@ -1350,11 +1405,13 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
     openWallDialog,
     openCornerDialog,
     openFurnitureDialog,
+    openRoomRotationDialog,
     closeDialog: () => dispatch({ type: 'closeDialog' }),
     renameEntity,
     updateWall,
     updateCorner,
     updateFurniture,
+    rotateRoom,
     moveRoom,
     moveFurniture,
     addWallFromAnchor,

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
-import type { CornerGeometry } from '../types'
+import type { CornerGeometry, RotationDirection } from '../types'
 import {
   findFloorById,
   findFurnitureById,
@@ -109,6 +109,39 @@ export function EditorDialogs() {
           corner={corner}
           onCancel={actions.closeDialog}
           onSubmit={(values) => actions.updateCorner(dialog.ids, values)}
+        />
+      </DialogFrame>
+    )
+  }
+
+  if (dialog.kind === 'room-rotation') {
+    const room =
+      dialog.ids.structureId &&
+      dialog.ids.floorId &&
+      dialog.ids.roomId
+        ? findRoomById(
+            draft,
+            dialog.ids.structureId,
+            dialog.ids.floorId,
+            dialog.ids.roomId,
+          )
+        : null
+
+    if (!room) {
+      return null
+    }
+
+    return (
+      <DialogFrame
+        title="Rotate room"
+        subtitle="Rotate the room outline and any placed furniture around the room center."
+        onClose={actions.closeDialog}
+      >
+        <RoomRotationDialogBody
+          key={`${dialog.ids.roomId}-rotation`}
+          roomName={room.name}
+          onCancel={actions.closeDialog}
+          onSubmit={(values) => actions.rotateRoom(dialog.ids, values)}
         />
       </DialogFrame>
     )
@@ -650,6 +683,107 @@ function FurnitureDialogBody({
   )
 }
 
+function RoomRotationDialogBody({
+  roomName,
+  onCancel,
+  onSubmit,
+}: {
+  roomName: string
+  onCancel: () => void
+  onSubmit: (values: {
+    degrees: number
+    direction: RotationDirection
+  }) => {
+    valid: boolean
+    error: string | null
+  }
+}) {
+  const [degrees, setDegrees] = useState('90')
+  const [direction, setDirection] = useState<RotationDirection>('clockwise')
+  const [error, setError] = useState<string | null>(null)
+  const inputRef = useRef<HTMLInputElement | null>(null)
+
+  useEffect(() => {
+    inputRef.current?.focus()
+    inputRef.current?.select()
+  }, [])
+
+  return (
+    <form
+      className="dialog-form"
+      onSubmit={(event) => {
+        event.preventDefault()
+        const value = Number.parseFloat(degrees)
+
+        if (!Number.isFinite(value) || value < 0 || value > 360) {
+          setError('Enter a rotation amount from 0 to 360 degrees.')
+          return
+        }
+
+        const result = onSubmit({
+          degrees: value,
+          direction,
+        })
+
+        if (!result.valid) {
+          setError(result.error)
+        }
+      }}
+    >
+      <div className="dialog-reference">
+        <div>
+          <span className="dialog-reference__label">Room</span>
+          <strong>{roomName}</strong>
+        </div>
+      </div>
+      <div className="field-grid compact">
+        <label>
+          <span>Degrees</span>
+          <input
+            ref={inputRef}
+            className="number-input"
+            max="360"
+            min="0"
+            step="1"
+            type="number"
+            value={degrees}
+            onChange={(event) => {
+              setDegrees(event.target.value)
+              setError(null)
+            }}
+          />
+        </label>
+        <label>
+          <span>Spin direction</span>
+          <select
+            className="text-input"
+            value={direction}
+            onChange={(event) => {
+              setDirection(event.target.value === 'counterclockwise' ? 'counterclockwise' : 'clockwise')
+              setError(null)
+            }}
+          >
+            <option value="clockwise">Clockwise</option>
+            <option value="counterclockwise">Counterclockwise</option>
+          </select>
+        </label>
+      </div>
+      <div className="dialog-meta">
+        <span>{formatRotationSummary(degrees, direction)}</span>
+        {error ? <span className="validation-error">{error}</span> : null}
+      </div>
+      <div className="dialog-actions">
+        <button className="ghost-button" onClick={onCancel} type="button">
+          Cancel
+        </button>
+        <button className="primary-button" type="submit">
+          Apply
+        </button>
+      </div>
+    </form>
+  )
+}
+
 function readNumber(value: string, fallback: number) {
   const numeric = Number(value)
   return Number.isFinite(numeric) ? numeric : fallback
@@ -657,4 +791,22 @@ function readNumber(value: string, fallback: number) {
 
 function formatDistanceFieldValue(value: number) {
   return formatFeet(value).replace(/\s/g, '')
+}
+
+function formatRotationSummary(value: string, direction: RotationDirection) {
+  const degrees = Number.parseFloat(value)
+
+  if (!Number.isFinite(degrees)) {
+    return 'Enter a valid degree value.'
+  }
+
+  if (degrees === 0 || degrees === 360) {
+    return 'No visible rotation.'
+  }
+
+  if (degrees === 180) {
+    return 'Half turn around the room center.'
+  }
+
+  return `${degrees}\u00b0 ${direction}`
 }

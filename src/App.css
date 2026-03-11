@@ -1156,6 +1156,35 @@
   background: rgba(255, 255, 255, 0.5);
 }
 
+.context-menu-submenu {
+  position: relative;
+}
+
+.context-menu-item--submenu {
+  justify-content: space-between;
+}
+
+.context-menu-item__caret {
+  font-size: 0.8rem;
+  opacity: 0.65;
+}
+
+.canvas-context-submenu {
+  position: absolute;
+  top: -0.45rem;
+  left: calc(100% - 0.15rem);
+  z-index: 1;
+  display: grid;
+  gap: 0.3rem;
+  min-width: 15rem;
+  padding: 0.45rem;
+  border-radius: var(--radius-card);
+  background: var(--paper);
+  border: 1px solid rgba(17, 17, 17, 0.08);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(14px);
+}
+
 .section-heading {
   display: flex;
   justify-content: space-between;

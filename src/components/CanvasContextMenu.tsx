@@ -1,13 +1,19 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useEditor } from '../context/EditorContext'
-import { getCanvasMenuItems, type CanvasMenuActionId } from '../lib/canvasMenu'
+import { getCanvasMenuItems, type CanvasMenuActionId, type CanvasMenuItem } from '../lib/canvasMenu'
 import type { CanvasTarget } from '../types'
+
+type MenuEntry = {
+  item: CanvasMenuItem
+  target: CanvasTarget
+}
 
 export function CanvasContextMenu() {
   const navigate = useNavigate()
   const { activeStructure, selectedRoom, ui, actions } = useEditor()
   const menuRef = useRef<HTMLDivElement | null>(null)
+  const [openSubmenuKey, setOpenSubmenuKey] = useState<string | null>(null)
 
   useEffect(() => {
     if (!ui.contextMenu) {
@@ -24,6 +30,10 @@ export function CanvasContextMenu() {
     return () => window.removeEventListener('pointerdown', handlePointerDown)
   }, [actions, ui.contextMenu])
 
+  useEffect(() => {
+    setOpenSubmenuKey(null)
+  }, [ui.contextMenu])
+
   if (!ui.contextMenu) {
     return null
   }
@@ -33,12 +43,12 @@ export function CanvasContextMenu() {
     target.kind === 'floor'
       ? (activeStructure?.floors.length ?? 0) > 1
       : (activeStructure?.floors.length ?? 0) > 1
-  const items = getContextMenuTargets(target).flatMap((menuTarget) =>
+  const items: MenuEntry[] = getContextMenuTargets(target).flatMap((menuTarget) =>
     getCanvasMenuItems(menuTarget, {
       canDeleteFloor,
       hasSelectedRoom: Boolean(selectedRoom),
     }).map((item) => ({
-      ...item,
+      item,
       target: menuTarget,
     })),
   )
@@ -52,20 +62,70 @@ export function CanvasContextMenu() {
       style={{ left: x, top: y }}
       onContextMenu={(event) => event.preventDefault()}
     >
-      {items.map((item) => (
-        <button
-          key={getMenuEntryKey(item.target, item.id)}
-          className={item.destructive ? 'context-menu-item danger' : 'context-menu-item'}
-          role="menuitem"
-          type="button"
-          onClick={() => {
-            runMenuAction(item.id, item.target)
-            actions.closeContextMenu()
-          }}
-        >
-          {item.label}
-        </button>
-      ))}
+      {items.map((entry) => {
+        if (entry.item.kind === 'submenu') {
+          const key = getMenuEntryKey(entry.target, entry.item.id)
+          const submenuOpen = openSubmenuKey === key
+
+          return (
+            <div
+              className="context-menu-submenu"
+              key={key}
+              onMouseEnter={() => setOpenSubmenuKey(key)}
+            >
+              <button
+                aria-expanded={submenuOpen}
+                aria-haspopup="menu"
+                className="context-menu-item context-menu-item--submenu"
+                role="menuitem"
+                type="button"
+                onClick={() => setOpenSubmenuKey(key)}
+              >
+                <span>{entry.item.label}</span>
+                <span aria-hidden="true" className="context-menu-item__caret">
+                  ▸
+                </span>
+              </button>
+              {submenuOpen ? (
+                <div aria-label={`${entry.item.label} submenu`} className="canvas-context-submenu" role="menu">
+                  {entry.item.items.map((submenuItem) => (
+                    <button
+                      key={getMenuEntryKey(entry.target, submenuItem.id)}
+                      className={submenuItem.destructive ? 'context-menu-item danger' : 'context-menu-item'}
+                      role="menuitem"
+                      type="button"
+                      onClick={() => {
+                        runMenuAction(submenuItem.id, entry.target)
+                        actions.closeContextMenu()
+                      }}
+                    >
+                      {submenuItem.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          )
+        }
+
+        const actionItem = entry.item
+        const key = getMenuEntryKey(entry.target, actionItem.id)
+
+        return (
+          <button
+            key={key}
+            className={actionItem.destructive ? 'context-menu-item danger' : 'context-menu-item'}
+            role="menuitem"
+            type="button"
+            onClick={() => {
+              runMenuAction(actionItem.id, entry.target)
+              actions.closeContextMenu()
+            }}
+          >
+            {actionItem.label}
+          </button>
+        )
+      })}
     </div>
   )
 
@@ -124,6 +184,64 @@ export function CanvasContextMenu() {
     if (actionId === 'rename-room' && actionTarget.kind === 'room') {
       actions.selectRoom(actionTarget.structureId, actionTarget.floorId, actionTarget.roomId)
       actions.openRenameDialog('room', {
+        structureId: actionTarget.structureId,
+        floorId: actionTarget.floorId,
+        roomId: actionTarget.roomId,
+      })
+      return
+    }
+
+    if (actionTarget.kind === 'room' && actionId === 'rotate-room-clockwise-90') {
+      actions.selectRoom(actionTarget.structureId, actionTarget.floorId, actionTarget.roomId)
+      actions.rotateRoom(
+        {
+          structureId: actionTarget.structureId,
+          floorId: actionTarget.floorId,
+          roomId: actionTarget.roomId,
+        },
+        {
+          degrees: 90,
+          direction: 'clockwise',
+        },
+      )
+      return
+    }
+
+    if (actionTarget.kind === 'room' && actionId === 'rotate-room-counterclockwise-90') {
+      actions.selectRoom(actionTarget.structureId, actionTarget.floorId, actionTarget.roomId)
+      actions.rotateRoom(
+        {
+          structureId: actionTarget.structureId,
+          floorId: actionTarget.floorId,
+          roomId: actionTarget.roomId,
+        },
+        {
+          degrees: 90,
+          direction: 'counterclockwise',
+        },
+      )
+      return
+    }
+
+    if (actionTarget.kind === 'room' && actionId === 'rotate-room-180') {
+      actions.selectRoom(actionTarget.structureId, actionTarget.floorId, actionTarget.roomId)
+      actions.rotateRoom(
+        {
+          structureId: actionTarget.structureId,
+          floorId: actionTarget.floorId,
+          roomId: actionTarget.roomId,
+        },
+        {
+          degrees: 180,
+          direction: 'clockwise',
+        },
+      )
+      return
+    }
+
+    if (actionTarget.kind === 'room' && actionId === 'rotate-room-custom') {
+      actions.selectRoom(actionTarget.structureId, actionTarget.floorId, actionTarget.roomId)
+      actions.openRoomRotationDialog({
         structureId: actionTarget.structureId,
         floorId: actionTarget.floorId,
         roomId: actionTarget.roomId,
@@ -226,6 +344,6 @@ function getContextMenuTargets(target: CanvasTarget): CanvasTarget[] {
   ]
 }
 
-function getMenuEntryKey(target: CanvasTarget, actionId: CanvasMenuActionId) {
+function getMenuEntryKey(target: CanvasTarget, actionId: string) {
   return `${target.kind}:${JSON.stringify(target)}:${actionId}`
 }

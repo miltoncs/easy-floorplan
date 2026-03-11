@@ -1811,11 +1811,6 @@ export function FloorplanCanvas() {
           return
         }
         actions.selectRoom(activeStructure.id, floor.id, room.id)
-        actions.openRenameDialog('room', {
-          structureId: activeStructure.id,
-          floorId: floor.id,
-          roomId: room.id,
-        })
       },
       onContextMenu: (event: ReactMouseEvent<SVGPathElement>) => openContextMenu(event, roomTarget),
       onMouseEnter: () => actions.setHoveredTarget(roomTarget),

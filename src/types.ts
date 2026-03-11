@@ -1,6 +1,7 @@
 export type EditorMode = 'rooms' | 'furniture' | 'stacked'
 
 export type NamedEntityKind = 'structure' | 'floor' | 'room' | 'furniture'
+export type RotationDirection = 'clockwise' | 'counterclockwise'
 
 export type Point = {
   x: number
@@ -151,7 +152,18 @@ export type FurnitureDialogState = {
   ids: EntityIds
 }
 
-export type DialogState = RenameDialogState | WallDialogState | CornerDialogState | FurnitureDialogState | null
+export type RoomRotationDialogState = {
+  kind: 'room-rotation'
+  ids: EntityIds
+}
+
+export type DialogState =
+  | RenameDialogState
+  | WallDialogState
+  | CornerDialogState
+  | FurnitureDialogState
+  | RoomRotationDialogState
+  | null
 
 export type CameraState = {
   zoom: number

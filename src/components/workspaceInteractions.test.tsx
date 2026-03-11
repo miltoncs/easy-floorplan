@@ -6,13 +6,18 @@ import { createFurniture, createRoom, createSegment } from '../lib/blueprint'
 import { renderEditor } from '../test/renderEditor'
 
 describe('workspace interactions', () => {
-  it('opens rename, inline wall edits, wall dialogs, and corner dialogs from direct canvas clicks', async () => {
+  it('keeps room rename on labels while direct canvas clicks edit walls and corners', async () => {
     const user = userEvent.setup()
     const draft = createSeedState()
     const livingRoom = draft.structures[0].floors[0].rooms[0]
+    const kitchen = draft.structures[0].floors[0].rooms[2]
     const firstWall = livingRoom.segments[0]
 
     renderEditor({ draft })
+
+    fireEvent.click(screen.getByTestId(`room-fill-${kitchen.id}`))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: kitchen.name })).toBeInTheDocument()
 
     fireEvent.click(screen.getByTestId(`room-label-${livingRoom.id}`))
     expect(screen.getByRole('dialog')).toHaveTextContent('Rename room')
@@ -41,6 +46,62 @@ describe('workspace interactions', () => {
     expect(cornerDialog).toHaveTextContent('Edit corner angle')
     expect(screen.getByRole('spinbutton', { name: 'Angle (deg)' })).toHaveValue(90)
     expect(cornerDialog).toHaveTextContent(/\+?90° between walls, left turn/)
+  })
+
+  it('rotates rooms from the room context menu, including the custom rotation dialog', async () => {
+    const user = userEvent.setup()
+    const draft = createSeedState()
+    const kitchen = draft.structures[0].floors[0].rooms[2]
+    const kitchenFurniture = kitchen.furniture[0]
+
+    renderEditor({ draft })
+
+    fireEvent.contextMenu(screen.getByTestId(`room-fill-${kitchen.id}`))
+    await user.click(screen.getByRole('menuitem', { name: 'Rotate' }))
+    await waitFor(() => expect(screen.getByRole('menuitem', { name: '90° ↻' })).toBeInTheDocument())
+    await user.click(screen.getByRole('menuitem', { name: '90° ↻' }))
+
+    await waitFor(() => {
+      const rotatedKitchen = readSavedDraft().structures[0].floors[0].rooms.find((room: { id: string }) => room.id === kitchen.id)
+      expect(rotatedKitchen?.startHeading).toBe(270)
+      expect(rotatedKitchen?.anchor.x).not.toBe(kitchen.anchor.x)
+      expect(rotatedKitchen?.anchor.y).not.toBe(kitchen.anchor.y)
+      expect(rotatedKitchen?.furniture[0]).toEqual(
+        expect.objectContaining({
+          id: kitchenFurniture.id,
+          rotation: 270,
+        }),
+      )
+      expect(rotatedKitchen?.furniture[0].x).not.toBe(kitchenFurniture.x)
+      expect(rotatedKitchen?.furniture[0].y).not.toBe(kitchenFurniture.y)
+    })
+
+    fireEvent.contextMenu(screen.getByTestId(`room-label-${kitchen.id}`))
+    await user.click(screen.getByRole('menuitem', { name: 'Rotate' }))
+    await waitFor(() => expect(screen.getByRole('menuitem', { name: 'Custom' })).toBeInTheDocument())
+    await user.click(screen.getByRole('menuitem', { name: 'Custom' }))
+
+    expect(screen.getByRole('dialog')).toHaveTextContent('Rotate room')
+    const degreesInput = screen.getByRole('spinbutton', { name: 'Degrees' })
+    await user.clear(degreesInput)
+    await user.type(degreesInput, '45')
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Spin direction' }), 'counterclockwise')
+    await user.click(screen.getByRole('button', { name: 'Apply' }))
+
+    await waitFor(() => {
+      const rotatedKitchen = readSavedDraft().structures[0].floors[0].rooms.find((room: { id: string }) => room.id === kitchen.id)
+      expect(rotatedKitchen?.startHeading).toBe(315)
+      expect(rotatedKitchen?.furniture[0]).toEqual(
+        expect.objectContaining({
+          id: kitchenFurniture.id,
+          rotation: 315,
+        }),
+      )
+      expect(rotatedKitchen?.anchor.x).not.toBe(kitchen.anchor.x)
+      expect(rotatedKitchen?.anchor.y).not.toBe(kitchen.anchor.y)
+      expect(rotatedKitchen?.furniture[0].x).not.toBe(kitchenFurniture.x)
+      expect(rotatedKitchen?.furniture[0].y).not.toBe(kitchenFurniture.y)
+    })
   })
 
   it('cancels dialog edits and room dragging when escape is pressed', async () => {
@@ -1072,6 +1133,7 @@ describe('workspace interactions', () => {
 
     fireEvent.contextMenu(screen.getByTestId(`room-label-${room.id}`))
     expect(screen.getByRole('menu')).toHaveTextContent('Rename room')
+    expect(screen.getByRole('menu')).toHaveTextContent('Rotate')
     fireEvent.pointerDown(document.body)
 
     fireEvent.contextMenu(screen.getByTestId(`wall-label-${wall.id}`))
@@ -1281,4 +1343,14 @@ function getPointToSegmentDistance(point: { x: number; y: number }, start: { x: 
   }
 
   return Math.hypot(point.x - closest.x, point.y - closest.y)
+}
+
+function readSavedDraft() {
+  const raw = window.localStorage.getItem('incremental-blueprint/v1')
+
+  if (!raw) {
+    throw new Error('Expected saved draft in localStorage')
+  }
+
+  return JSON.parse(raw)
 }

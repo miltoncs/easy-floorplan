@@ -5,6 +5,7 @@ import {
   getCornerAngleBetweenWalls,
   getRoomCorners,
   getTurnFromCornerAngle,
+  rotateRoom,
   roomToGeometry,
   round,
   snapFurnitureToRoom,
@@ -169,6 +170,48 @@ describe('validateRoomWalls', () => {
     expect(actualById).toEqual(expectedById)
     expect(room.anchor).toEqual({ x: 10, y: 0 })
     expect(room.startHeading).toBe(90)
+  })
+
+  it('rotates a room and its furniture around the room center', () => {
+    const room = createRoom({
+      anchor: { x: 0, y: 0 },
+      startHeading: 0,
+      segments: [
+        createSegment({ id: 'seg-a', label: 'A', length: 10, turn: -90 }),
+        createSegment({ id: 'seg-b', label: 'B', length: 8, turn: -90 }),
+        createSegment({ id: 'seg-c', label: 'C', length: 10, turn: -90 }),
+        createSegment({ id: 'seg-d', label: 'D', length: 8, turn: -90 }),
+      ],
+      furniture: [
+        createFurniture({
+          id: 'furn-a',
+          x: 1,
+          y: -7,
+          width: 2,
+          depth: 2,
+          rotation: 15,
+        }),
+      ],
+    })
+
+    rotateRoom(room, -90)
+
+    expect(room.anchor).toEqual({ x: 9, y: 1 })
+    expect(room.startHeading).toBe(270)
+    expect(room.furniture).toEqual([
+      expect.objectContaining({
+        id: 'furn-a',
+        x: 2,
+        y: -2,
+        rotation: 285,
+      }),
+    ])
+
+    const rotatedGeometry = roomToGeometry(room)
+    expect(rotatedGeometry.segments[0].heading).toBe(270)
+    expect(rotatedGeometry.segments[0].start).toEqual({ x: 9, y: 1 })
+    expect(rotatedGeometry.segments[0].end.x).toBeCloseTo(9, 6)
+    expect(rotatedGeometry.segments[0].end.y).toBeCloseTo(-9, 6)
   })
 
   it('keeps the remaining chain connected when deleting the first wall', () => {

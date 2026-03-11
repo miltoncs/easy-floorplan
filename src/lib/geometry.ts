@@ -427,6 +427,56 @@ export function midpoint(a: Point, b: Point): Point {
   }
 }
 
+export function rotatePoint(point: Point, center: Point, angle: number) {
+  if (Math.abs(angle) <= INTERSECTION_EPSILON) {
+    return point
+  }
+
+  const radians = degToRad(angle)
+  const translatedX = point.x - center.x
+  const translatedY = point.y - center.y
+
+  return {
+    x: center.x + translatedX * Math.cos(radians) - translatedY * Math.sin(radians),
+    y: center.y + translatedX * Math.sin(radians) + translatedY * Math.cos(radians),
+  }
+}
+
+export function rotateRoom(room: Room, angle: number) {
+  const normalizedAngle = normalizeAngle(angle)
+
+  if (normalizedAngle === 0) {
+    return
+  }
+
+  const geometry = roomToGeometry(room)
+  const center = boundsCenter(geometry.bounds)
+  const rotatedAnchor = rotatePoint(room.anchor, center, angle)
+
+  room.anchor = {
+    x: round(rotatedAnchor.x, 4),
+    y: round(rotatedAnchor.y, 4),
+  }
+  room.startHeading = normalizeAngle(room.startHeading + angle)
+  room.furniture = room.furniture.map((item) => {
+    const rotatedCenter = rotatePoint(
+      {
+        x: item.x + item.width / 2,
+        y: item.y + item.depth / 2,
+      },
+      center,
+      angle,
+    )
+
+    return {
+      ...item,
+      x: round(rotatedCenter.x - item.width / 2, 4),
+      y: round(rotatedCenter.y - item.depth / 2, 4),
+      rotation: normalizeAngle(item.rotation + angle),
+    }
+  })
+}
+
 export function snapFurnitureToRoom(
   room: Room,
   furniture: Furniture,
@@ -636,21 +686,6 @@ function getFurnitureCorners(furniture: Furniture) {
     { x: furniture.x + furniture.width, y: furniture.y + furniture.depth },
     { x: furniture.x, y: furniture.y + furniture.depth },
   ].map((corner) => rotatePoint(corner, center, furniture.rotation))
-}
-
-function rotatePoint(point: Point, center: Point, angle: number) {
-  if (Math.abs(angle) <= INTERSECTION_EPSILON) {
-    return point
-  }
-
-  const radians = degToRad(angle)
-  const translatedX = point.x - center.x
-  const translatedY = point.y - center.y
-
-  return {
-    x: center.x + translatedX * Math.cos(radians) - translatedY * Math.sin(radians),
-    y: center.y + translatedX * Math.sin(radians) + translatedY * Math.cos(radians),
-  }
 }
 
 function normalizeVector(vector: Point) {
