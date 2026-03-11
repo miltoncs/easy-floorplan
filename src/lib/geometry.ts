@@ -147,6 +147,69 @@ export function roomToGeometry(room: Room): RoomGeometry {
   }
 }
 
+export function deleteRoomSegmentPreservingGeometry(room: Room, segmentId: string) {
+  const segmentIndex = room.segments.findIndex((segment) => segment.id === segmentId)
+
+  if (segmentIndex < 0) {
+    return {
+      deleted: false as const,
+      reason: 'not-found' as const,
+    }
+  }
+
+  if (room.segments.length <= 1) {
+    room.segments = []
+
+    return {
+      deleted: true as const,
+    }
+  }
+
+  const geometry = roomToGeometry(room)
+
+  if (geometry.closed) {
+    const deletedSegment = geometry.segments[segmentIndex]
+    const nextSegment = geometry.segments[(segmentIndex + 1) % geometry.segments.length]
+
+    room.anchor = { ...deletedSegment.end }
+    room.startHeading = nextSegment.heading
+    room.segments = [
+      ...room.segments.slice(segmentIndex + 1),
+      ...room.segments.slice(0, segmentIndex),
+    ]
+
+    return {
+      deleted: true as const,
+    }
+  }
+
+  if (segmentIndex === 0) {
+    const deletedSegment = geometry.segments[0]
+    const nextSegment = geometry.segments[1]
+
+    room.anchor = { ...deletedSegment.end }
+    room.startHeading = nextSegment.heading
+    room.segments = room.segments.slice(1)
+
+    return {
+      deleted: true as const,
+    }
+  }
+
+  if (segmentIndex === room.segments.length - 1) {
+    room.segments = room.segments.slice(0, -1)
+
+    return {
+      deleted: true as const,
+    }
+  }
+
+  return {
+    deleted: false as const,
+    reason: 'split-open-chain' as const,
+  }
+}
+
 export function getRoomCorners(room: Room): CornerGeometry[] {
   const geometry = roomToGeometry(room)
 
