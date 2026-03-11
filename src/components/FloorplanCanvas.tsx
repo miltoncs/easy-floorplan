@@ -2892,7 +2892,7 @@ function buildCornerHoverArc({
 }) {
   const incomingLength = Math.hypot(incomingStart.x - corner.x, incomingStart.y - corner.y)
   const outgoingLength = Math.hypot(outgoingEnd.x - corner.x, outgoingEnd.y - corner.y)
-  const radius = clamp(Math.min(incomingLength, outgoingLength) * 0.28, 10, 28)
+  const radius = clamp(Math.min(incomingLength, outgoingLength) * 0.28, 10, 14)
   const startAngle = getScreenAngleDegrees(corner, incomingStart)
   const endAngle = getScreenAngleDegrees(corner, outgoingEnd)
   const clockwiseDelta = normalizeAngle(endAngle - startAngle)
