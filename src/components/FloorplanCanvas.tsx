@@ -680,7 +680,7 @@ export function FloorplanCanvas() {
     }
 
     const completedDrag = dragRef.current
-    endDrag(completedDrag)
+    endDrag()
 
     if (completedDrag.kind === 'selection') {
       suppressCanvasClickRef.current = true
