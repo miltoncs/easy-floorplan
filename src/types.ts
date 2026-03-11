@@ -13,6 +13,8 @@ export type OutlineSegment = {
   length: number
   turn: number
   notes: string
+  startPoint?: Point
+  startHeading?: number
 }
 
 export type Furniture = {
@@ -188,6 +190,16 @@ export type SegmentGeometry = {
   end: Point
 }
 
+export type RoomGeometryChain = {
+  points: Point[]
+  segments: SegmentGeometry[]
+  endPoint: Point
+  exitHeading: number
+  closed: boolean
+  measuredArea: number | null
+  inferredArea: number | null
+}
+
 export type Bounds = {
   minX: number
   minY: number
@@ -198,6 +210,7 @@ export type Bounds = {
 export type RoomGeometry = {
   points: Point[]
   segments: SegmentGeometry[]
+  chains: RoomGeometryChain[]
   endPoint: Point
   exitHeading: number
   closed: boolean

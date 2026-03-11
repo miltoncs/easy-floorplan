@@ -844,7 +844,7 @@ describe('workspace interactions', () => {
     expect(screen.getByRole('button', { name: expandedFloorLabel })).toBeInTheDocument()
   })
 
-  it('deletes the room when its last wall is deleted', async () => {
+  it('removes the last wall without deleting the room', async () => {
     const user = userEvent.setup()
     const draft = createSeedState()
     const floor = draft.structures[0].floors[0]
@@ -868,8 +868,9 @@ describe('workspace interactions', () => {
 
     await user.click(within(wallRow as HTMLElement).getByRole('button', { name: 'Delete' }))
 
-    await waitFor(() => expect(screen.queryByRole('heading', { name: 'Closet' })).not.toBeInTheDocument())
-    expect(screen.getByRole('button', { name: /First floor3 rooms/i })).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Closet' })).toBeInTheDocument())
+    expect(screen.queryByText('Closet wall')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /First floor4 rooms/i })).toBeInTheDocument()
   })
 
   it('keeps the remaining wall lines fixed when deleting a wall from a closed room', async () => {
@@ -911,6 +912,112 @@ describe('workspace interactions', () => {
     )).toEqual(expectedLineMap)
   })
 
+  it('keeps an open wall chain connected when deleting the first wall', async () => {
+    const user = userEvent.setup()
+    const draft = createSeedState()
+    const room = createRoom({
+      name: 'Open chain',
+      anchor: { x: 0, y: 0 },
+      startHeading: 0,
+      segments: [
+        createSegment({ id: 'wall-a', label: 'Wall A', length: 10, turn: 90 }),
+        createSegment({ id: 'wall-b', label: 'Wall B', length: 8, turn: -90 }),
+        createSegment({ id: 'wall-c', label: 'Wall C', length: 6, turn: 90 }),
+        createSegment({ id: 'wall-d', label: 'Wall D', length: 4, turn: 0 }),
+      ],
+      furniture: [],
+    })
+
+    draft.structures[0].floors[0].rooms = [room]
+    draft.selectedRoomId = room.id
+
+    renderEditor({ draft })
+
+    fireEvent.contextMenu(screen.getByTestId('wall-hit-wall-a'), {
+      clientX: 120,
+      clientY: 120,
+    })
+
+    await user.click(screen.getByRole('menuitem', { name: 'Delete wall' }))
+
+    await waitFor(() => expect(screen.queryByTestId('wall-hit-wall-a')).not.toBeInTheDocument())
+
+    const wallB = getWallLinePosition('wall-b')
+    const wallC = getWallLinePosition('wall-c')
+    const wallD = getWallLinePosition('wall-d')
+
+    expect({ x: wallB.x2, y: wallB.y2 }).toEqual({ x: wallC.x1, y: wallC.y1 })
+    expect({ x: wallC.x2, y: wallC.y2 }).toEqual({ x: wallD.x1, y: wallD.y1 })
+  })
+
+  it('moves detached wall runs by the same amount as the main room anchor', async () => {
+    const draft = createSeedState()
+    const room = createRoom({
+      name: 'Detached runs',
+      anchor: { x: 0, y: 0 },
+      startHeading: 0,
+      segments: [
+        createSegment({ id: 'wall-a', label: 'Wall A', length: 8, turn: 0 }),
+        createSegment({
+          id: 'wall-b',
+          label: 'Wall B',
+          length: 5,
+          turn: 0,
+          startPoint: { x: 14, y: 6 },
+          startHeading: 90,
+        }),
+      ],
+      furniture: [],
+    })
+
+    draft.structures[0].floors[0].rooms = [room]
+    draft.selectedRoomId = room.id
+
+    renderEditor({ draft })
+
+    const svg = screen.getByLabelText('Interactive floorplan canvas')
+    mockCanvasRect(svg)
+
+    const beforeA = getWallLinePosition('wall-a')
+    const beforeB = getWallLinePosition('wall-b')
+
+    fireEvent.pointerDown(screen.getByTestId(`room-label-${room.id}`), {
+      button: 0,
+      pointerId: 52,
+      clientX: 160,
+      clientY: 140,
+    })
+    fireEvent.pointerMove(window, {
+      pointerId: 52,
+      clientX: 220,
+      clientY: 176,
+    })
+    fireEvent.pointerUp(window, {
+      pointerId: 52,
+      clientX: 220,
+      clientY: 176,
+    })
+
+    await waitFor(() => {
+      const afterA = getWallLinePosition('wall-a')
+      expect(afterA.x1).not.toBe(beforeA.x1)
+    })
+
+    const afterA = getWallLinePosition('wall-a')
+    const afterB = getWallLinePosition('wall-b')
+    const deltaA = {
+      x: afterA.x1 - beforeA.x1,
+      y: afterA.y1 - beforeA.y1,
+    }
+    const deltaB = {
+      x: afterB.x1 - beforeB.x1,
+      y: afterB.y1 - beforeB.y1,
+    }
+
+    expect(deltaB.x).toBeCloseTo(deltaA.x, 6)
+    expect(deltaB.y).toBeCloseTo(deltaA.y, 6)
+  })
+
   it('supports shift-drag marquee selection on the canvas', async () => {
     const draft = createSeedState()
 
@@ -942,7 +1049,7 @@ describe('workspace interactions', () => {
     })
 
     await waitFor(() => expect(screen.getByTestId('box-selection-summary')).toHaveTextContent('3 rooms'))
-    expect(screen.getByTestId('box-selection-summary')).toHaveTextContent('2 walls')
+    expect(screen.getByTestId('box-selection-summary')).toHaveTextContent('10 walls')
   })
 
   it('opens context menus for structure, floor, room, wall, furniture, and empty canvas targets', async () => {

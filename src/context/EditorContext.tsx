@@ -612,12 +612,31 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
     }
 
     if (side === 'before') {
-      if (segmentIndex !== 0) {
+      const targetSegment = room.segments[segmentIndex]
+      const anchor = segmentIndex === 0 ? room.anchor : targetSegment.startPoint
+      const heading = segmentIndex === 0 ? room.startHeading : targetSegment.startHeading
+
+      if (!anchor || typeof heading !== 'number') {
         return false
       }
 
-      room.anchor = addPolar(room.anchor, segment.length, normalizeAngle(room.startHeading + 180))
-      room.segments.unshift(segment)
+      const nextStart = addPolar(anchor, segment.length, normalizeAngle(heading + 180))
+      if (segmentIndex === 0) {
+        segment.startPoint = undefined
+        segment.startHeading = undefined
+      } else {
+        segment.startPoint = { ...nextStart }
+        segment.startHeading = heading
+      }
+      room.segments.splice(segmentIndex, 0, segment)
+
+      if (segmentIndex === 0) {
+        room.anchor = nextStart
+      } else {
+        targetSegment.startPoint = undefined
+        targetSegment.startHeading = undefined
+      }
+
       return true
     }
 
@@ -823,6 +842,14 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
 
       room.anchor.x += delta.x
       room.anchor.y += delta.y
+      room.segments.forEach((segment) => {
+        if (!segment.startPoint) {
+          return
+        }
+
+        segment.startPoint.x += delta.x
+        segment.startPoint.y += delta.y
+      })
     }, {
       status: 'Room moved.',
     })
@@ -1234,24 +1261,10 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
         return
       }
 
-      if (room.segments.length <= 1) {
-        mutateDraft((draft) => {
-          const floor = findFloorById(draft, structureId, floorId)
-          if (!floor) {
-            return
-          }
-
-          floor.rooms = floor.rooms.filter((item) => item.id !== roomId)
-        }, {
-          status: 'Wall removed.',
-        })
-        return
-      }
-
       const previewRoom = structuredClone(room)
       const deletionResult = deleteRoomSegmentPreservingGeometry(previewRoom, segmentId)
       if (!deletionResult.deleted) {
-        setStatus('Delete an end wall while the room is still open.')
+        setStatus('Wall could not be removed.')
         return
       }
 

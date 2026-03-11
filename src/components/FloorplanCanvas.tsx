@@ -352,10 +352,7 @@ export function FloorplanCanvas() {
     ? []
     : buildSelectableCanvasTargets({
         activeStructureId: activeStructure?.id,
-        activeFloorId: activeFloor?.id ?? draft.activeFloorId,
         visibleFloors,
-        selectedRoomGeometry,
-        selectedRoomId: draft.selectedRoomId,
         viewBox,
         canvasMetrics,
         viewRotationQuarterTurns,
@@ -1006,69 +1003,6 @@ export function FloorplanCanvas() {
             <SuggestedPath dataTestId={`suggested-path-${preview.suggestion.id}`} points={preview.points} />
           </g>
         ))}
-
-        {!showSimplifiedDragPreview && selectedRoom && selectedRoomGeometry
-          ? selectedRoomGeometry.segments.map((segment) => {
-              const target: CanvasTarget =
-                activeStructure && activeFloor
-                  ? {
-                      kind: 'wall',
-                      structureId: activeStructure.id,
-                      floorId: activeFloor.id,
-                      roomId: selectedRoom.id,
-                      segmentId: segment.id,
-                    }
-                  : { kind: 'canvas' }
-
-              return (
-                <g key={segment.id}>
-                  <line
-                    className={[
-                      'wall-hit',
-                      matchesTarget(ui.hoveredTarget, target) ? 'hovered' : '',
-                      isTargetSelected(ui.selectionTargets, target) ? 'selected' : '',
-                    ]
-                      .filter(Boolean)
-                      .join(' ')}
-                    data-testid={`wall-hit-${segment.id}`}
-                    stroke="transparent"
-                    strokeWidth={1.2}
-                    x1={segment.start.x}
-                    x2={segment.end.x}
-                    y1={-segment.start.y}
-                    y2={-segment.end.y}
-                    onPointerDown={(event) => {
-                      if (target.kind !== 'wall') {
-                        return
-                      }
-
-                      actions.selectTarget(target)
-                      beginDrag(event, {
-                        kind: 'wall',
-                        pointerId: event.pointerId,
-                        clientX: event.clientX,
-                        clientY: event.clientY,
-                        structureId: target.structureId,
-                        floorId: target.floorId,
-                        roomId: target.roomId,
-                        segmentId: target.segmentId,
-                        startX: selectedRoom.anchor.x,
-                        startY: selectedRoom.anchor.y,
-                        currentX: selectedRoom.anchor.x,
-                        currentY: selectedRoom.anchor.y,
-                        moved: false,
-                      })
-                    }}
-                    onClick={() => handleWallClick(target)}
-                    onContextMenu={(event) => openContextMenu(event, target)}
-                    onMouseEnter={() => actions.setHoveredTarget(target)}
-                    onMouseLeave={() => actions.setHoveredTarget(null)}
-                  />
-                </g>
-              )
-            })
-          : null}
-
         {!showSimplifiedDragPreview && selectedRoom && selectedRoomGeometry && activeStructure && activeFloor
           ? getRoomCorners(selectedRoom).map((corner) => {
               const target: CanvasTarget = {
@@ -1102,42 +1036,48 @@ export function FloorplanCanvas() {
         selectedRoomGeometry &&
         activeStructure &&
         activeFloor &&
-        !selectedRoomGeometry.closed
-          ? [
-              selectedRoomGeometry.segments[0]
-                ? {
-                    key: `${selectedRoomGeometry.segments[0].id}-anchor-start`,
-                    testId: `anchor-start-${selectedRoomGeometry.segments[0].id}`,
-                    point: selectedRoomGeometry.segments[0].start,
+        selectedRoomGeometry.chains.some((chain) => !chain.closed)
+          ? selectedRoomGeometry.chains
+              .flatMap((chain) => {
+                if (chain.closed || chain.segments.length === 0) {
+                  return []
+                }
+
+                const firstSegment = chain.segments[0]
+                const lastSegment = chain.segments[chain.segments.length - 1]
+
+                return [
+                  {
+                    key: `${firstSegment.id}-anchor-start`,
+                    testId: `anchor-start-${firstSegment.id}`,
+                    point: firstSegment.start,
                     onClick: (event: ReactMouseEvent<SVGGElement>) => {
                       event.stopPropagation()
                       actions.addWallFromAnchor(
                         activeStructure.id,
                         activeFloor.id,
                         selectedRoom.id,
-                        selectedRoomGeometry.segments[0].id,
+                        firstSegment.id,
                         'before',
                       )
                     },
-                  }
-                : null,
-              selectedRoomGeometry.segments[selectedRoomGeometry.segments.length - 1]
-                ? {
-                    key: `${selectedRoomGeometry.segments[selectedRoomGeometry.segments.length - 1].id}-anchor-end`,
-                    testId: `anchor-${selectedRoomGeometry.segments[selectedRoomGeometry.segments.length - 1].id}`,
-                    point: selectedRoomGeometry.segments[selectedRoomGeometry.segments.length - 1].end,
+                  },
+                  {
+                    key: `${lastSegment.id}-anchor-end`,
+                    testId: `anchor-${lastSegment.id}`,
+                    point: lastSegment.end,
                     onClick: (event: ReactMouseEvent<SVGGElement>) => {
                       event.stopPropagation()
                       actions.addWallFromAnchor(
                         activeStructure.id,
                         activeFloor.id,
                         selectedRoom.id,
-                        selectedRoomGeometry.segments[selectedRoomGeometry.segments.length - 1].id,
+                        lastSegment.id,
                       )
                     },
-                  }
-                : null,
-            ]
+                  },
+                ]
+              })
               .filter(
                 (
                   anchor,
@@ -1823,8 +1763,19 @@ export function FloorplanCanvas() {
     }
 
     const geometry = roomToGeometry(room)
-    const path = pointsToPath(geometry.closed ? geometry.points.slice(0, -1) : geometry.points)
-    const openRoomHitPath = !geometry.closed && geometry.points.length >= 3 ? `${path} Z` : null
+    const strokePath = geometry.chains
+      .map((chain) => pointsToPath(chain.closed ? chain.points.slice(0, -1) : chain.points))
+      .filter(Boolean)
+      .join(' ')
+    const fillPath = geometry.chains
+      .filter((chain) => chain.closed)
+      .map((chain) => `${pointsToPath(chain.points.slice(0, -1))} Z`)
+      .join(' ')
+    const openRoomHitPath =
+      geometry.chains
+        .filter((chain) => !chain.closed && chain.points.length >= 3)
+        .map((chain) => `${pointsToPath(chain.points)} Z`)
+        .join(' ') || null
     const roomTarget: CanvasTarget = {
       kind: 'room',
       structureId: activeStructure.id,
@@ -1887,20 +1838,20 @@ export function FloorplanCanvas() {
             {...roomHandlers}
           />
         ) : null}
-        {!showSimplifiedDragPreview && geometry.closed ? (
+        {!showSimplifiedDragPreview && fillPath ? (
           <path
             className={['room-fill', hovered ? 'hovered' : '', multiSelected ? 'selected' : ''].filter(Boolean).join(' ')}
-            d={`${path} Z`}
+            d={fillPath}
             data-testid={`room-fill-${room.id}`}
             fill="#ffffff"
             fillOpacity={active || multiSelected ? 0.16 : 0.06}
             stroke="none"
             {...roomHandlers}
           />
-        ) : !showSimplifiedDragPreview ? (
+        ) : !showSimplifiedDragPreview && strokePath ? (
           <path
             className={['room-stroke', 'open', hovered ? 'hovered' : '', multiSelected ? 'selected' : ''].filter(Boolean).join(' ')}
-            d={path}
+            d={strokePath}
             data-testid={`room-stroke-${room.id}`}
             fill="none"
             stroke="transparent"
@@ -1926,6 +1877,60 @@ export function FloorplanCanvas() {
             y2={-segment.end.y}
           />
         ))}
+
+        {!showSimplifiedDragPreview
+          ? geometry.segments.map((segment) => {
+              const target: CanvasTarget = {
+                kind: 'wall',
+                structureId: activeStructure.id,
+                floorId: floor.id,
+                roomId: room.id,
+                segmentId: segment.id,
+              }
+
+              return (
+                <line
+                  key={`${segment.id}-hit`}
+                  className={[
+                    'wall-hit',
+                    matchesTarget(ui.hoveredTarget, target) ? 'hovered' : '',
+                    isTargetSelected(ui.selectionTargets, target) ? 'selected' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                  data-testid={`wall-hit-${segment.id}`}
+                  stroke="transparent"
+                  strokeWidth={1.2}
+                  x1={segment.start.x}
+                  x2={segment.end.x}
+                  y1={-segment.start.y}
+                  y2={-segment.end.y}
+                  onPointerDown={(event) => {
+                    actions.selectTarget(target)
+                    beginDrag(event, {
+                      kind: 'wall',
+                      pointerId: event.pointerId,
+                      clientX: event.clientX,
+                      clientY: event.clientY,
+                      structureId: target.structureId,
+                      floorId: target.floorId,
+                      roomId: target.roomId,
+                      segmentId: target.segmentId,
+                      startX: room.anchor.x,
+                      startY: room.anchor.y,
+                      currentX: room.anchor.x,
+                      currentY: room.anchor.y,
+                      moved: false,
+                    })
+                  }}
+                  onClick={() => handleWallClick(target)}
+                  onContextMenu={(event) => openContextMenu(event, target)}
+                  onMouseEnter={() => actions.setHoveredTarget(target)}
+                  onMouseLeave={() => actions.setHoveredTarget(null)}
+                />
+              )
+            })
+          : null}
 
         {isFurnitureMode
           ? room.furniture.map((item) => {
@@ -2071,20 +2076,14 @@ function rectContainsRect(outer: CanvasRect, inner: CanvasRect) {
 
 function buildSelectableCanvasTargets({
   activeStructureId,
-  activeFloorId,
   visibleFloors,
-  selectedRoomGeometry,
-  selectedRoomId,
   viewBox,
   canvasMetrics,
   viewRotationQuarterTurns,
   showFurniture,
 }: {
   activeStructureId?: string
-  activeFloorId: string
   visibleFloors: Floor[]
-  selectedRoomGeometry: ReturnType<typeof roomToGeometry> | null
-  selectedRoomId: string | null
   viewBox: { x: number; y: number; width: number; height: number }
   canvasMetrics: CanvasMetrics
   viewRotationQuarterTurns: number
@@ -2107,6 +2106,30 @@ function buildSelectableCanvasTargets({
           roomId: room.id,
         },
         rect: getScreenRectFromWorldBounds(geometry.bounds, viewBox, canvasMetrics, viewRotationQuarterTurns),
+      })
+
+      geometry.segments.forEach((segment) => {
+        const start = worldToScreenPoint(segment.start, viewBox, canvasMetrics, viewRotationQuarterTurns)
+        const end = worldToScreenPoint(segment.end, viewBox, canvasMetrics, viewRotationQuarterTurns)
+        targets.push({
+          target: {
+            kind: 'wall',
+            structureId: activeStructureId,
+            floorId: floor.id,
+            roomId: room.id,
+            segmentId: segment.id,
+          },
+          rect: expandRect(
+            {
+              minX: Math.min(start.x, end.x),
+              maxX: Math.max(start.x, end.x),
+              minY: Math.min(start.y, end.y),
+              maxY: Math.max(start.y, end.y),
+            },
+            8,
+            8,
+          ),
+        })
       })
 
       if (!showFurniture) {
@@ -2137,32 +2160,6 @@ function buildSelectableCanvasTargets({
       })
     })
   })
-
-  if (selectedRoomGeometry && selectedRoomId) {
-    selectedRoomGeometry.segments.forEach((segment) => {
-      const start = worldToScreenPoint(segment.start, viewBox, canvasMetrics, viewRotationQuarterTurns)
-      const end = worldToScreenPoint(segment.end, viewBox, canvasMetrics, viewRotationQuarterTurns)
-      targets.push({
-        target: {
-          kind: 'wall',
-          structureId: activeStructureId,
-          floorId: activeFloorId,
-          roomId: selectedRoomId,
-          segmentId: segment.id,
-        },
-        rect: expandRect(
-          {
-            minX: Math.min(start.x, end.x),
-            maxX: Math.max(start.x, end.x),
-            minY: Math.min(start.y, end.y),
-            maxY: Math.max(start.y, end.y),
-          },
-          8,
-          8,
-        ),
-      })
-    })
-  }
 
   return targets
 }
@@ -3132,10 +3129,13 @@ function buildCornerHoverOverlay({
   }
 
   const corner = corners[cornerIndex]
-  const previousSegment = selectedRoomGeometry.segments[cornerIndex]
-  const nextSegment = corner.isExit
-    ? null
-    : selectedRoomGeometry.segments[cornerIndex + 1] ?? (selectedRoomGeometry.closed ? selectedRoomGeometry.segments[0] : null)
+  const previousSegment = selectedRoomGeometry.segments.find((segment) => segment.id === segmentId)
+
+  if (!previousSegment) {
+    return null
+  }
+
+  const nextSegment = corner.isExit ? null : getConnectedNextSegment(selectedRoomGeometry, segmentId)
   const point = worldToScreenPoint(corner.point, viewBox, canvasMetrics, viewRotationQuarterTurns)
   const incomingStart = worldToScreenPoint(previousSegment.start, viewBox, canvasMetrics, viewRotationQuarterTurns)
   const outgoingEnd = nextSegment
@@ -3168,6 +3168,20 @@ function buildCornerHoverOverlay({
     labelPoint: hoverArc.labelPoint,
     text: formatCornerAngleBadge(corner.turn),
   }
+}
+
+function getConnectedNextSegment(geometry: ReturnType<typeof roomToGeometry>, segmentId: string) {
+  for (const chain of geometry.chains) {
+    const segmentIndex = chain.segments.findIndex((segment) => segment.id === segmentId)
+
+    if (segmentIndex < 0) {
+      continue
+    }
+
+    return chain.segments[segmentIndex + 1] ?? (chain.closed ? chain.segments[0] : null)
+  }
+
+  return null
 }
 
 function getVisibleCornerOverlays({

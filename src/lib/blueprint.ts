@@ -54,6 +54,8 @@ export function createSegment(partial?: Partial<Room['segments'][number]>) {
     length: partial?.length ?? 10,
     turn: partial?.turn ?? 90,
     notes: partial?.notes ?? '',
+    startPoint: partial?.startPoint ? { ...partial.startPoint } : undefined,
+    startHeading: partial?.startHeading,
   }
 }
 
@@ -383,17 +385,20 @@ function hashSuggestionSignature(value: string) {
 export function getRoomSuggestions(room: Room, floor: Floor) {
   const geometry = roomToGeometry(room)
   const suggestions: RoomSuggestion[] = []
+  const primaryChain = geometry.chains[0]
+  const hasSingleRun = geometry.chains.length === 1 && Boolean(primaryChain)
 
-  if (!geometry.closed && room.segments.length >= 2) {
-    const closureVector = subtractPoints(room.anchor, geometry.endPoint)
-    const closureDistance = pointDistance(room.anchor, geometry.endPoint)
+  if (hasSingleRun && !geometry.closed && room.segments.length >= 2 && primaryChain) {
+    const chainStart = primaryChain.points[0]
+    const closureVector = subtractPoints(chainStart, geometry.endPoint)
+    const closureDistance = pointDistance(chainStart, geometry.endPoint)
 
     if (closureDistance > 0.15) {
-      const closureHeading = angleFromPoints(geometry.endPoint, room.anchor)
+      const closureHeading = angleFromPoints(geometry.endPoint, chainStart)
       const directAlignment = Math.abs(angleDelta(geometry.exitHeading, closureHeading))
 
       if (directAlignment <= 8) {
-        const turnBackToStart = angleDelta(closureHeading, room.startHeading)
+        const turnBackToStart = angleDelta(closureHeading, primaryChain.segments[0]?.heading ?? room.startHeading)
         suggestions.push(
           buildClosureSegment(
             room,
@@ -433,7 +438,7 @@ export function getRoomSuggestions(room: Room, floor: Floor) {
               {
                 label: `${room.name} return leg`,
                 length: round(Math.abs(sideDistance)),
-                turn: round(angleDelta(secondHeading, room.startHeading), 1),
+                turn: round(angleDelta(secondHeading, primaryChain.segments[0]?.heading ?? room.startHeading), 1),
               },
             ],
             'orthogonal',
@@ -444,6 +449,7 @@ export function getRoomSuggestions(room: Room, floor: Floor) {
   }
 
   if (
+    hasSingleRun &&
     room.segments.length === 2 &&
     Math.abs(Math.abs(room.segments[0].turn) - 90) <= 5 &&
     Math.abs(room.segments[0].turn - room.segments[1].turn) <= 5
@@ -651,7 +657,7 @@ export function getViewBox(
 export function getRoomLabelPoint(room: Room) {
   const geometry = roomToGeometry(room)
 
-  if (geometry.points.length < 2) {
+  if (geometry.segments.length === 0) {
     return room.anchor
   }
 

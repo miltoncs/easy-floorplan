@@ -1,4 +1,4 @@
-import type { Bounds, CornerGeometry, Furniture, Point, Room, RoomGeometry, SegmentGeometry } from '../types'
+import type { Bounds, CornerGeometry, Furniture, Point, Room, RoomGeometry, RoomGeometryChain, SegmentGeometry } from '../types'
 
 const CLOSE_EPSILON = 0.45
 const INTERSECTION_EPSILON = 1e-6
@@ -106,15 +106,62 @@ export function boundsSize(bounds: Bounds) {
 }
 
 export function roomToGeometry(room: Room): RoomGeometry {
-  const points: Point[] = [room.anchor]
+  if (room.segments.length === 0) {
+    return {
+      points: [room.anchor],
+      segments: [],
+      chains: [],
+      endPoint: room.anchor,
+      exitHeading: room.startHeading,
+      closed: false,
+      measuredArea: null,
+      inferredArea: null,
+      bounds: createEmptyBounds(room.anchor),
+    }
+  }
+
+  const chains: RoomGeometryChain[] = []
   const segments: SegmentGeometry[] = []
+  let bounds: Bounds | null = null
+  let currentPoints: Point[] = []
+  let currentSegments: SegmentGeometry[] = []
   let cursor = room.anchor
   let heading = room.startHeading
-  let bounds = createEmptyBounds(room.anchor)
 
-  room.segments.forEach((segment) => {
+  const flushChain = () => {
+    if (currentPoints.length === 0) {
+      return
+    }
+
+    const endPoint = currentPoints[currentPoints.length - 1]
+    const closed = currentSegments.length >= 3 && pointDistance(endPoint, currentPoints[0]) <= CLOSE_EPSILON
+    const closedLoop = closed ? currentPoints.slice(0, -1) : currentPoints
+
+    chains.push({
+      points: currentPoints,
+      segments: currentSegments,
+      endPoint,
+      exitHeading: heading,
+      closed,
+      measuredArea: closed ? polygonArea(closedLoop) : null,
+      inferredArea: currentPoints.length >= 3 ? polygonArea([...currentPoints, currentPoints[0]]) : null,
+    })
+  }
+
+  room.segments.forEach((segment, index) => {
+    const startsDetachedRun = index === 0 || Boolean(segment.startPoint)
+
+    if (startsDetachedRun) {
+      flushChain()
+      cursor = index === 0 ? room.anchor : { ...segment.startPoint! }
+      heading = index === 0 ? room.startHeading : segment.startHeading ?? room.startHeading
+      currentPoints = [cursor]
+      currentSegments = []
+      bounds = bounds ? expandBounds(bounds, cursor) : createEmptyBounds(cursor)
+    }
+
     const next = addPolar(cursor, segment.length, heading)
-    segments.push({
+    const geometrySegment = {
       id: segment.id,
       label: segment.label,
       length: segment.length,
@@ -122,28 +169,30 @@ export function roomToGeometry(room: Room): RoomGeometry {
       heading,
       start: cursor,
       end: next,
-    })
-    points.push(next)
-    bounds = expandBounds(bounds, next)
+    }
+
+    currentSegments.push(geometrySegment)
+    segments.push(geometrySegment)
+    currentPoints.push(next)
+    bounds = expandBounds(bounds ?? createEmptyBounds(cursor), next)
     cursor = next
     heading = normalizeAngle(heading + segment.turn)
   })
 
-  const endPoint = points[points.length - 1]
-  const closed = room.segments.length >= 3 && pointDistance(endPoint, room.anchor) <= CLOSE_EPSILON
-  const closedLoop = closed ? points.slice(0, -1) : points
-  const measuredArea = closed ? polygonArea(closedLoop) : null
-  const inferredArea = points.length >= 3 ? polygonArea([...points, room.anchor]) : null
+  flushChain()
+
+  const primaryChain = chains[chains.length - 1]
 
   return {
-    points,
+    points: primaryChain?.points ?? [room.anchor],
     segments,
-    endPoint,
-    exitHeading: heading,
-    closed,
-    measuredArea,
-    inferredArea,
-    bounds,
+    chains,
+    endPoint: primaryChain?.endPoint ?? room.anchor,
+    exitHeading: primaryChain?.exitHeading ?? room.startHeading,
+    closed: chains.length === 1 ? primaryChain?.closed ?? false : false,
+    measuredArea: chains.length === 1 ? primaryChain?.measuredArea ?? null : null,
+    inferredArea: chains.length === 1 ? primaryChain?.inferredArea ?? null : null,
+    bounds: bounds ?? createEmptyBounds(room.anchor),
   }
 }
 
@@ -157,98 +206,99 @@ export function deleteRoomSegmentPreservingGeometry(room: Room, segmentId: strin
     }
   }
 
-  if (room.segments.length <= 1) {
-    room.segments = []
-
-    return {
-      deleted: true as const,
-    }
-  }
-
   const geometry = roomToGeometry(room)
+  const nextGeometrySegment = geometry.segments[segmentIndex + 1] ?? null
 
-  if (geometry.closed) {
-    const deletedSegment = geometry.segments[segmentIndex]
-    const nextSegment = geometry.segments[(segmentIndex + 1) % geometry.segments.length]
+  room.segments.splice(segmentIndex, 1)
 
-    room.anchor = { ...deletedSegment.end }
-    room.startHeading = nextSegment.heading
-    room.segments = [
-      ...room.segments.slice(segmentIndex + 1),
-      ...room.segments.slice(0, segmentIndex),
-    ]
+  if (room.segments.length === 0) {
+    return {
+      deleted: true as const,
+    }
+  }
+
+  if (segmentIndex === 0 && nextGeometrySegment) {
+    room.anchor = { ...nextGeometrySegment.start }
+    room.startHeading = nextGeometrySegment.heading
+    delete room.segments[0].startPoint
+    delete room.segments[0].startHeading
 
     return {
       deleted: true as const,
     }
   }
 
-  if (segmentIndex === 0) {
-    const deletedSegment = geometry.segments[0]
-    const nextSegment = geometry.segments[1]
-
-    room.anchor = { ...deletedSegment.end }
-    room.startHeading = nextSegment.heading
-    room.segments = room.segments.slice(1)
-
-    return {
-      deleted: true as const,
-    }
-  }
-
-  if (segmentIndex === room.segments.length - 1) {
-    room.segments = room.segments.slice(0, -1)
-
-    return {
-      deleted: true as const,
-    }
+  if (segmentIndex < room.segments.length && nextGeometrySegment) {
+    room.segments[segmentIndex].startPoint = { ...nextGeometrySegment.start }
+    room.segments[segmentIndex].startHeading = nextGeometrySegment.heading
   }
 
   return {
-    deleted: false as const,
-    reason: 'split-open-chain' as const,
+    deleted: true as const,
   }
 }
 
 export function getRoomCorners(room: Room, options?: { includeExits?: boolean }): CornerGeometry[] {
   const geometry = roomToGeometry(room)
 
-  return geometry.segments.flatMap((segment, index) => {
-    const nextSegment = geometry.segments[index + 1] ?? (geometry.closed ? geometry.segments[0] : null)
+  return geometry.chains.flatMap((chain) =>
+    chain.segments.flatMap((segment, index) => {
+      const nextSegment = chain.segments[index + 1] ?? (chain.closed ? chain.segments[0] : null)
 
-    if (!nextSegment && !options?.includeExits) {
-      return []
-    }
+      if (!nextSegment && !options?.includeExits) {
+        return []
+      }
 
-    const incomingLabel = segment.label || `Wall ${index + 1}`
-    const outgoingLabel = nextSegment ? nextSegment.label || `Wall ${(index + 1) % geometry.segments.length + 1}` : null
+      const incomingLabel = segment.label || `Wall ${index + 1}`
+      const outgoingLabel = nextSegment ? nextSegment.label || `Wall ${(index + 1) % chain.segments.length + 1}` : null
 
-    return {
-      segmentId: segment.id,
-      point: segment.end,
-      turn: segment.turn,
-      incomingLabel,
-      outgoingLabel,
-      isExit: nextSegment === null,
-    }
-  })
+      return {
+        segmentId: segment.id,
+        point: segment.end,
+        turn: segment.turn,
+        incomingLabel,
+        outgoingLabel,
+        isExit: nextSegment === null,
+      }
+    }),
+  )
 }
 
 export function validateRoomWalls(room: Room): RoomWallValidation {
   const geometry = roomToGeometry(room)
   const segments = geometry.segments
+  const chainIndexBySegmentId = new Map<string, { chainIndex: number; segmentIndex: number; chainLength: number; closed: boolean }>()
+
+  geometry.chains.forEach((chain, chainIndex) => {
+    chain.segments.forEach((segment, segmentIndex) => {
+      chainIndexBySegmentId.set(segment.id, {
+        chainIndex,
+        segmentIndex,
+        chainLength: chain.segments.length,
+        closed: chain.closed,
+      })
+    })
+  })
 
   for (let leftIndex = 0; leftIndex < segments.length; leftIndex += 1) {
     for (let rightIndex = leftIndex + 1; rightIndex < segments.length; rightIndex += 1) {
       const left = segments[leftIndex]
       const right = segments[rightIndex]
+      const leftMeta = chainIndexBySegmentId.get(left.id)
+      const rightMeta = chainIndexBySegmentId.get(right.id)
+      const allowSharedEndpoint =
+        Boolean(leftMeta) &&
+        Boolean(rightMeta) &&
+        leftMeta!.chainIndex === rightMeta!.chainIndex &&
+        (
+          rightMeta!.segmentIndex === leftMeta!.segmentIndex + 1 ||
+          (leftMeta!.segmentIndex === 0 &&
+            rightMeta!.segmentIndex === leftMeta!.chainLength - 1 &&
+            leftMeta!.closed)
+        )
 
       if (segmentsConflict(left, right, {
-        allowSharedEndpoint:
-          rightIndex === leftIndex + 1 ||
-          (leftIndex === 0 &&
-            rightIndex === segments.length - 1 &&
-            pointDistance(left.start, right.end) <= CLOSE_EPSILON),
+        allowSharedEndpoint,
       })) {
         return {
           valid: false,
@@ -647,5 +697,5 @@ function dotProduct(left: Point, right: Point) {
 
 function getRoomCornerPoints(room: Room) {
   const geometry = roomToGeometry(room)
-  return geometry.closed ? geometry.points.slice(0, -1) : geometry.points
+  return geometry.chains.flatMap((chain) => (chain.closed ? chain.points.slice(0, -1) : chain.points))
 }

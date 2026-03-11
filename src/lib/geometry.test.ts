@@ -171,7 +171,32 @@ describe('validateRoomWalls', () => {
     expect(room.startHeading).toBe(90)
   })
 
-  it('rejects deleting a middle wall from an open chain', () => {
+  it('keeps the remaining chain connected when deleting the first wall', () => {
+    const room = createRoom({
+      anchor: { x: 0, y: 0 },
+      startHeading: 0,
+      segments: [
+        createSegment({ id: 'seg-a', label: 'A', length: 10, turn: 90 }),
+        createSegment({ id: 'seg-b', label: 'B', length: 8, turn: -90 }),
+        createSegment({ id: 'seg-c', label: 'C', length: 6, turn: 90 }),
+        createSegment({ id: 'seg-d', label: 'D', length: 4, turn: 0 }),
+      ],
+    })
+
+    expect(deleteRoomSegmentPreservingGeometry(room, 'seg-a')).toEqual({
+      deleted: true,
+    })
+
+    const after = roomToGeometry(room)
+
+    expect(after.chains).toHaveLength(1)
+    expect(after.segments.map((segment) => segment.id)).toEqual(['seg-b', 'seg-c', 'seg-d'])
+    expect(after.segments[0].start).toEqual({ x: 10, y: 0 })
+    expect(after.segments[1].start).toEqual(after.segments[0].end)
+    expect(after.segments[2].start).toEqual(after.segments[1].end)
+  })
+
+  it('detaches the following run when deleting a middle wall from an open chain', () => {
     const room = createRoom({
       anchor: { x: 0, y: 0 },
       startHeading: 0,
@@ -181,13 +206,67 @@ describe('validateRoomWalls', () => {
         createSegment({ id: 'seg-c', label: 'C', length: 6, turn: 0 }),
       ],
     })
-    const before = structuredClone(room)
+    const before = roomToGeometry(room)
+    const expectedById = Object.fromEntries(
+      before.segments
+        .filter((segment) => segment.id !== 'seg-b')
+        .map((segment) => [
+          segment.id,
+          {
+            heading: round(segment.heading, 4),
+            start: {
+              x: round(segment.start.x, 4),
+              y: round(segment.start.y, 4),
+            },
+            end: {
+              x: round(segment.end.x, 4),
+              y: round(segment.end.y, 4),
+            },
+          },
+        ]),
+    )
 
     expect(deleteRoomSegmentPreservingGeometry(room, 'seg-b')).toEqual({
-      deleted: false,
-      reason: 'split-open-chain',
+      deleted: true,
     })
-    expect(room).toEqual(before)
+
+    const after = roomToGeometry(room)
+    const actualById = Object.fromEntries(
+      after.segments.map((segment) => [
+        segment.id,
+        {
+          heading: round(segment.heading, 4),
+          start: {
+            x: round(segment.start.x, 4),
+            y: round(segment.start.y, 4),
+          },
+          end: {
+            x: round(segment.end.x, 4),
+            y: round(segment.end.y, 4),
+          },
+        },
+      ]),
+    )
+
+    expect(actualById).toEqual(expectedById)
+    expect(after.chains).toHaveLength(2)
+    expect(room.segments[1].startPoint).toEqual({ x: 10, y: 8 })
+    expect(room.segments[1].startHeading).toBe(0)
+  })
+
+  it('removes the last remaining wall without deleting the room model', () => {
+    const room = createRoom({
+      anchor: { x: 2, y: 3 },
+      startHeading: 45,
+      segments: [createSegment({ id: 'seg-a', label: 'Only wall', length: 7, turn: 0 })],
+    })
+
+    expect(deleteRoomSegmentPreservingGeometry(room, 'seg-a')).toEqual({
+      deleted: true,
+    })
+    expect(room.segments).toEqual([])
+    expect(room.anchor).toEqual({ x: 2, y: 3 })
+    expect(room.startHeading).toBe(45)
   })
 
   it('snaps nearby furniture edges flush to room walls', () => {
