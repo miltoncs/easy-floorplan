@@ -81,16 +81,18 @@ test('supports direct canvas editing and route-based navigation', async ({ page 
   expect(await canvas.getAttribute('viewBox')).toBe(viewBoxBeforeRoomDrag)
   await page.mouse.up()
 
-  const kitchenFillAfterDrag = await kitchenFill.boundingBox()
-  const draftAfterDrag = await page.evaluate(() => JSON.parse(window.localStorage.getItem('incremental-blueprint/v1') || 'null'))
-  const kitchenAfterDrag = draftAfterDrag.structures[0].floors[0].rooms.find((room: { id: string; anchor: { y: number } }) => room.id === kitchen.id)
-  if (!kitchenFillAfterDrag || !kitchenAfterDrag) {
-    throw new Error('Expected Kitchen room state after drag')
-  }
-
   expect(await canvas.getAttribute('viewBox')).toBe(viewBoxBeforeRoomDrag)
-  expect(kitchenAfterDrag.anchor.y).toBeGreaterThan(kitchen.anchor.y + 5)
-  expect(kitchenFillAfterDrag.y).toBeLessThan(kitchenFillBox.y - 80)
+  await expect
+    .poll(async () => {
+      const draftAfterDrag = await page.evaluate(() => JSON.parse(window.localStorage.getItem('incremental-blueprint/v1') || 'null'))
+      return draftAfterDrag?.structures?.[0]?.floors?.[0]?.rooms?.find(
+        (room: { id: string; anchor: { y: number } }) => room.id === kitchen.id,
+      )?.anchor?.y ?? null
+    })
+    .toBeGreaterThan(kitchen.anchor.y + 5)
+  await expect
+    .poll(async () => (await kitchenFill.boundingBox())?.y ?? null)
+    .toBeLessThan(kitchenFillBox.y - 80)
   await expect(page.getByRole('dialog')).toHaveCount(0)
 
   await roomLabel.click({ force: true })
