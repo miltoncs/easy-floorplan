@@ -43,7 +43,15 @@ import {
   selectTargetInDraft,
   touchStructure,
 } from '../lib/blueprint'
-import { addPolar, clamp, deleteRoomSegmentPreservingGeometry, normalizeAngle, roomToGeometry, validateRoomWalls } from '../lib/geometry'
+import {
+  addPolar,
+  clamp,
+  deleteRoomSegmentPreservingGeometry,
+  normalizeAngle,
+  roomToGeometry,
+  snapFurnitureToRoom,
+  validateRoomWalls,
+} from '../lib/geometry'
 import { validateName } from '../lib/nameValidation'
 import {
   createStructureExportEnvelope,
@@ -828,13 +836,25 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
     delta: { x: number; y: number },
   ) => {
     mutateDraft((draft) => {
+      const room = findRoomById(draft, structureId, floorId, roomId)
       const item = findFurnitureById(draft, structureId, floorId, roomId, furnitureId)
-      if (!item) {
+      if (!room || !item) {
         return
       }
 
-      item.x += delta.x
-      item.y += delta.y
+      const nextPosition = snapFurnitureToRoom(
+        room,
+        {
+          ...item,
+          x: item.x + delta.x,
+          y: item.y + delta.y,
+        },
+        draft.furnitureSnapStrength,
+        draft.furnitureCornerSnapStrength,
+      )
+
+      item.x = nextPosition.x
+      item.y = nextPosition.y
     }, {
       status: 'Furniture moved.',
     })
