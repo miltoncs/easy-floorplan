@@ -640,11 +640,13 @@ describe('workspace interactions', () => {
   it('supports keyboard undo and redo for drawing changes', async () => {
     const user = userEvent.setup()
     const draft = createSeedState()
-    const nextRoomName = `Room ${draft.structures[0].floors[0].rooms.length + 1}`
+    const floor = draft.structures[0].floors[0]
+    const nextRoomName = `Room ${floor.rooms.length + 1}`
 
     renderEditor({ draft })
 
-    await user.click(screen.getByRole('button', { name: 'Add room' }))
+    fireEvent.contextMenu(screen.getByTestId(`floor-label-${floor.id}`))
+    await user.click(screen.getByRole('menuitem', { name: 'Add room' }))
     await waitFor(() => expect(screen.getByRole('heading', { name: nextRoomName })).toBeInTheDocument())
 
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
@@ -663,7 +665,8 @@ describe('workspace interactions', () => {
 
     renderEditor({ draft })
 
-    await user.click(screen.getByRole('button', { name: 'Add room' }))
+    fireEvent.contextMenu(screen.getByTestId(`floor-label-${floor.id}`))
+    await user.click(screen.getByRole('menuitem', { name: 'Add room' }))
     await waitFor(() => expect(screen.getByRole('button', { name: expandedFloorLabel })).toBeInTheDocument())
 
     fireEvent.click(screen.getByTestId(`room-label-${room.id}`))
@@ -749,7 +752,7 @@ describe('workspace interactions', () => {
 
     renderEditor({ draft })
 
-    fireEvent.contextMenu(screen.getByTestId('structure-badge'))
+    fireEvent.contextMenu(screen.getByTestId('structure-header'))
     expect(screen.getByRole('menu')).toHaveTextContent('Rename structure')
     fireEvent.pointerDown(document.body)
 

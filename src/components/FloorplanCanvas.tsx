@@ -20,6 +20,7 @@ import {
   padBounds,
 } from '../lib/blueprint'
 import { parseDistanceInput } from '../lib/distance'
+import { MODE_LABELS } from '../lib/editorModes'
 import {
   addPolar,
   boundsSize,
@@ -213,8 +214,8 @@ export function FloorplanCanvas() {
 
   const shapeSuggestions = roomSuggestions.filter(hasSuggestedSegments)
   const canvasMetrics = getCanvasMetrics(viewBox, canvasSize)
-  const structureBadgeRect = getCanvasStructureChipRect(viewBox, canvasMetrics)
   const canvasToolbarRect = getCanvasToolbarRect(viewBox, canvasMetrics)
+  const canvasModeSwitchRect = getCanvasModeSwitchRect(viewBox, canvasMetrics)
   const canvasLegendRect = getCanvasLegendRect(viewBox, canvasMetrics)
   const suggestedPreviews =
     draft.showInferred && selectedRoom
@@ -223,15 +224,15 @@ export function FloorplanCanvas() {
           viewBox,
           canvasMetrics,
           [
-            expandRect(structureBadgeRect, 0.4, 0.4),
             expandRect(canvasToolbarRect, 0.8, 0.8),
+            expandRect(canvasModeSwitchRect, 0.4, 0.4),
             expandRect(canvasLegendRect, 0.4, 0.4),
           ],
         )
       : []
   const reservedAnnotationRects = [
-    expandRect(svgRectToScreenRect(structureBadgeRect, viewBox, canvasMetrics), 10, 10),
     expandRect(svgRectToScreenRect(canvasToolbarRect, viewBox, canvasMetrics), 14, 14),
+    expandRect(svgRectToScreenRect(canvasModeSwitchRect, viewBox, canvasMetrics), 12, 12),
     expandRect(svgRectToScreenRect(canvasLegendRect, viewBox, canvasMetrics), 12, 12),
     ...suggestedPreviews.map((preview) => expandRect(svgRectToScreenRect(preview.actionRect, viewBox, canvasMetrics), 12, 12)),
   ]
@@ -1064,33 +1065,6 @@ export function FloorplanCanvas() {
         </div>
       ))}
 
-      {activeStructure ? (
-        <button
-          className={
-            ui.hoveredTarget?.kind === 'structure' ? 'canvas-structure-chip hovered' : 'canvas-structure-chip'
-          }
-          data-testid="structure-badge"
-          onClick={() => actions.openRenameDialog('structure', { structureId: activeStructure.id })}
-          onContextMenu={(event) =>
-            openContextMenu(event, {
-              kind: 'structure',
-              structureId: activeStructure.id,
-            })
-          }
-          onMouseEnter={() =>
-            actions.setHoveredTarget({
-              kind: 'structure',
-              structureId: activeStructure.id,
-            })
-          }
-          onMouseLeave={() => actions.setHoveredTarget(null)}
-          type="button"
-        >
-          <span className="canvas-structure-chip__label">Structure</span>
-          <strong>{activeStructure.name}</strong>
-        </button>
-      ) : null}
-
       <div aria-label="Canvas view controls" className="canvas-toolbar">
         <div className="canvas-toolbar-row">
           <p className="canvas-toolbar-kicker">View</p>
@@ -1161,6 +1135,19 @@ export function FloorplanCanvas() {
             <span>Angles</span>
           </label>
         </div>
+      </div>
+
+      <div aria-label="Canvas mode selector" className="canvas-mode-switch" data-testid="canvas-mode-switch">
+        {Object.entries(MODE_LABELS).map(([mode, label]) => (
+          <button
+            key={mode}
+            className={draft.editorMode === mode ? 'mode-pill active' : 'mode-pill'}
+            onClick={() => actions.setEditorMode(mode as keyof typeof MODE_LABELS)}
+            type="button"
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       <div aria-label="Canvas legend" className="canvas-key">
@@ -2123,18 +2110,6 @@ function getCanvasToolbarRect(
   }
 }
 
-function getCanvasStructureChipRect(
-  viewBox: { x: number; y: number; width: number; height: number },
-  metrics: CanvasMetrics,
-) {
-  const left = 16 * metrics.unitX
-  const top = 16 * metrics.unitY
-  const width = Math.min(280, Math.max(188, metrics.widthPx * 0.27)) * metrics.unitX
-  const height = 58 * metrics.unitY
-
-  return makeRectFromTopLeft(viewBox.x + left, viewBox.y + top, width, height)
-}
-
 function getCanvasLegendRect(
   viewBox: { x: number; y: number; width: number; height: number },
   metrics: CanvasMetrics,
@@ -2153,13 +2128,16 @@ function getCanvasLegendRect(
   }
 }
 
-function makeRectFromTopLeft(x: number, y: number, width: number, height: number): CanvasRect {
-  return {
-    minX: x,
-    maxX: x + width,
-    minY: y,
-    maxY: y + height,
-  }
+function getCanvasModeSwitchRect(
+  viewBox: { x: number; y: number; width: number; height: number },
+  metrics: CanvasMetrics,
+) {
+  const bottom = 16 * metrics.unitY
+  const width = Math.min(320, Math.max(248, metrics.widthPx - 32)) * metrics.unitX
+  const height = 60 * metrics.unitY
+  const maxY = viewBox.y + viewBox.height - bottom
+
+  return makeCenteredRect(viewBox.x + viewBox.width / 2, maxY - height / 2, width, height)
 }
 
 function makeCenteredRect(x: number, y: number, width: number, height: number): CanvasRect {

@@ -51,6 +51,69 @@
   gap: 0.7rem 1rem;
 }
 
+.workspace-structure-title {
+  flex: 1 1 14rem;
+  min-width: 12rem;
+  max-width: 18rem;
+  display: grid;
+  gap: 0.18rem;
+  padding: 0.62rem 0.8rem;
+  border: 1px solid rgba(17, 17, 17, 0.08);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.workspace-structure-title__row {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.55rem;
+}
+
+.workspace-structure-title__row strong {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink);
+  font-family: 'Public Sans', sans-serif;
+  font-size: 0.98rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.workspace-structure-title__edit {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: rgba(17, 17, 17, 0.68);
+  cursor: pointer;
+  transition:
+    transform 160ms ease,
+    color 160ms ease;
+}
+
+.workspace-structure-title__edit:hover {
+  transform: translateY(-1px);
+  color: var(--ink);
+}
+
+.workspace-structure-title__edit:focus-visible {
+  outline: 2px solid rgba(17, 17, 17, 0.24);
+  outline-offset: 2px;
+}
+
+.pencil-icon {
+  inline-size: 0.9rem;
+  block-size: 0.9rem;
+}
+
 .section-heading h2,
 .dialog-header h2 {
   margin: 0;
@@ -591,62 +654,6 @@
   backdrop-filter: blur(18px);
 }
 
-.canvas-structure-chip {
-  position: absolute;
-  top: 1rem;
-  left: 1rem;
-  z-index: 5;
-  min-width: min(17.5rem, calc(100% - 12rem));
-  max-width: min(18rem, calc(100% - 12rem));
-  display: grid;
-  justify-items: start;
-  gap: 0.18rem;
-  padding: 0.68rem 0.86rem 0.74rem;
-  border: 1px solid rgba(17, 17, 17, 0.12);
-  border-radius: var(--radius-card);
-  background: rgba(255, 255, 255, 0.94);
-  color: var(--ink);
-  box-shadow: 0 14px 30px rgba(17, 17, 17, 0.08);
-  cursor: pointer;
-  text-align: left;
-  transition:
-    transform 160ms ease,
-    border-color 160ms ease,
-    background 160ms ease;
-}
-
-.canvas-structure-chip:hover,
-.canvas-structure-chip.hovered {
-  transform: translateY(-1px);
-  border-color: rgba(17, 17, 17, 0.28);
-  background: rgba(255, 255, 255, 0.98);
-}
-
-.canvas-structure-chip__label,
-.canvas-structure-chip strong {
-  margin: 0;
-}
-
-.canvas-structure-chip__label {
-  color: rgba(17, 17, 17, 0.5);
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 0.66rem;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
-.canvas-structure-chip strong {
-  max-width: 100%;
-  overflow: hidden;
-  color: var(--ink);
-  font-size: 0.96rem;
-  font-weight: 700;
-  line-height: 1.2;
-  letter-spacing: -0.02em;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .canvas-toolbar-row {
   display: flex;
   flex-wrap: wrap;
@@ -675,7 +682,32 @@
   background: rgba(255, 255, 255, 0.98);
 }
 
-.canvas-structure-chip.hovered,
+.canvas-mode-switch {
+  position: absolute;
+  left: 50%;
+  bottom: 1rem;
+  z-index: 5;
+  width: min(20rem, calc(100% - 2rem));
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+  padding: 0.55rem;
+  border: 1px solid rgba(17, 17, 17, 0.08);
+  border-radius: calc(var(--radius-card) + 0.1rem);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 16px 30px rgba(17, 17, 17, 0.08);
+  backdrop-filter: blur(18px);
+  transform: translateX(-50%);
+}
+
+.canvas-mode-switch .mode-pill {
+  width: 100%;
+  min-width: 0;
+  padding: 0.7rem 0.5rem;
+  font-size: 0.92rem;
+  white-space: nowrap;
+}
+
 .canvas-annotation.hovered,
 .room-fill.hovered,
 .room-stroke.hovered,
@@ -1862,8 +1894,9 @@ code {
     max-width: none;
   }
 
-  .canvas-structure-chip {
-    max-width: min(18rem, calc(100% - 2rem));
+  .workspace-structure-title {
+    flex-basis: 100%;
+    max-width: none;
   }
 
   .canvas-toolbar-row,
@@ -1879,7 +1912,14 @@ code {
   .canvas-key {
     right: 1rem;
     left: auto;
-    bottom: 1rem;
+    bottom: 5.6rem;
+  }
+
+  .canvas-mode-switch {
+    right: 1rem;
+    left: 1rem;
+    width: auto;
+    transform: none;
   }
 
   .canvas-suggestion-action {

@@ -128,7 +128,7 @@ test('supports right-click menus across the 2D view and JSON round-trips', async
   await page.goto('/workspace')
   await page.waitForLoadState('networkidle')
 
-  await page.getByTestId('structure-badge').click({ button: 'right' })
+  await page.getByTestId('structure-header').click({ button: 'right' })
   await expect(page.getByRole('menu')).toContainText('Rename structure')
   await page.mouse.click(10, 10)
 
