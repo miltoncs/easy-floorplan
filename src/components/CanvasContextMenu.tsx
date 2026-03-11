@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useEditor } from '../context/EditorContext'
 import { getCanvasMenuItems, type CanvasMenuActionId } from '../lib/canvasMenu'
+import type { CanvasTarget } from '../types'
 
 export function CanvasContextMenu() {
   const navigate = useNavigate()
@@ -32,10 +33,15 @@ export function CanvasContextMenu() {
     target.kind === 'floor'
       ? (activeStructure?.floors.length ?? 0) > 1
       : (activeStructure?.floors.length ?? 0) > 1
-  const items = getCanvasMenuItems(target, {
-    canDeleteFloor,
-    hasSelectedRoom: Boolean(selectedRoom),
-  })
+  const items = getContextMenuTargets(target).flatMap((menuTarget) =>
+    getCanvasMenuItems(menuTarget, {
+      canDeleteFloor,
+      hasSelectedRoom: Boolean(selectedRoom),
+    }).map((item) => ({
+      ...item,
+      target: menuTarget,
+    })),
+  )
 
   return (
     <div
@@ -48,12 +54,12 @@ export function CanvasContextMenu() {
     >
       {items.map((item) => (
         <button
-          key={item.id}
+          key={getMenuEntryKey(item.target, item.id)}
           className={item.destructive ? 'context-menu-item danger' : 'context-menu-item'}
           role="menuitem"
           type="button"
           onClick={() => {
-            runMenuAction(item.id)
+            runMenuAction(item.id, item.target)
             actions.closeContextMenu()
           }}
         >
@@ -63,7 +69,7 @@ export function CanvasContextMenu() {
     </div>
   )
 
-  function runMenuAction(actionId: CanvasMenuActionId) {
+  function runMenuAction(actionId: CanvasMenuActionId, actionTarget: CanvasTarget) {
     if (actionId === 'fit-view') {
       actions.resetCamera()
       return
@@ -80,8 +86,8 @@ export function CanvasContextMenu() {
     }
 
     if (actionId === 'add-room') {
-      if (target.kind === 'floor') {
-        actions.selectFloor(target.structureId, target.floorId)
+      if (actionTarget.kind === 'floor') {
+        actions.selectFloor(actionTarget.structureId, actionTarget.floorId)
       }
       actions.addRoom()
       return
@@ -97,106 +103,129 @@ export function CanvasContextMenu() {
       return
     }
 
-    if (actionId === 'activate-floor' && target.kind === 'floor') {
-      actions.selectFloor(target.structureId, target.floorId)
+    if (actionId === 'activate-floor' && actionTarget.kind === 'floor') {
+      actions.selectFloor(actionTarget.structureId, actionTarget.floorId)
       return
     }
 
-    if (actionId === 'rename-structure' && target.kind === 'structure') {
-      actions.openRenameDialog('structure', { structureId: target.structureId })
+    if (actionId === 'rename-structure' && actionTarget.kind === 'structure') {
+      actions.openRenameDialog('structure', { structureId: actionTarget.structureId })
       return
     }
 
-    if (actionId === 'rename-floor' && target.kind === 'floor') {
+    if (actionId === 'rename-floor' && actionTarget.kind === 'floor') {
       actions.openRenameDialog('floor', {
-        structureId: target.structureId,
-        floorId: target.floorId,
+        structureId: actionTarget.structureId,
+        floorId: actionTarget.floorId,
       })
       return
     }
 
-    if (actionId === 'rename-room' && target.kind === 'room') {
-      actions.selectRoom(target.structureId, target.floorId, target.roomId)
+    if (actionId === 'rename-room' && actionTarget.kind === 'room') {
+      actions.selectRoom(actionTarget.structureId, actionTarget.floorId, actionTarget.roomId)
       actions.openRenameDialog('room', {
-        structureId: target.structureId,
-        floorId: target.floorId,
-        roomId: target.roomId,
+        structureId: actionTarget.structureId,
+        floorId: actionTarget.floorId,
+        roomId: actionTarget.roomId,
       })
       return
     }
 
-    if (actionId === 'rename-furniture' && target.kind === 'furniture') {
-      actions.selectFurniture(target.structureId, target.floorId, target.roomId, target.furnitureId)
+    if (actionId === 'rename-furniture' && actionTarget.kind === 'furniture') {
+      actions.selectFurniture(actionTarget.structureId, actionTarget.floorId, actionTarget.roomId, actionTarget.furnitureId)
       actions.openRenameDialog('furniture', {
-        structureId: target.structureId,
-        floorId: target.floorId,
-        roomId: target.roomId,
-        furnitureId: target.furnitureId,
+        structureId: actionTarget.structureId,
+        floorId: actionTarget.floorId,
+        roomId: actionTarget.roomId,
+        furnitureId: actionTarget.furnitureId,
       })
       return
     }
 
-    if (actionId === 'add-wall' && target.kind === 'room') {
-      actions.selectRoom(target.structureId, target.floorId, target.roomId)
+    if (actionId === 'add-wall' && actionTarget.kind === 'room') {
+      actions.selectRoom(actionTarget.structureId, actionTarget.floorId, actionTarget.roomId)
       actions.addWall()
       return
     }
 
-    if (actionId === 'edit-wall' && target.kind === 'wall') {
-      actions.selectTarget(target)
+    if (actionId === 'edit-wall' && actionTarget.kind === 'wall') {
+      actions.selectTarget(actionTarget)
       actions.openWallDialog({
-        structureId: target.structureId,
-        floorId: target.floorId,
-        roomId: target.roomId,
-        segmentId: target.segmentId,
+        structureId: actionTarget.structureId,
+        floorId: actionTarget.floorId,
+        roomId: actionTarget.roomId,
+        segmentId: actionTarget.segmentId,
       })
       return
     }
 
-    if (actionId === 'edit-corner' && target.kind === 'corner') {
-      actions.selectTarget(target)
+    if (actionId === 'edit-corner' && actionTarget.kind === 'corner') {
+      actions.selectTarget(actionTarget)
       actions.openCornerDialog({
-        structureId: target.structureId,
-        floorId: target.floorId,
-        roomId: target.roomId,
-        segmentId: target.segmentId,
+        structureId: actionTarget.structureId,
+        floorId: actionTarget.floorId,
+        roomId: actionTarget.roomId,
+        segmentId: actionTarget.segmentId,
       })
       return
     }
 
-    if (actionId === 'add-wall-after' && target.kind === 'wall') {
-      actions.insertWallAfter(target.structureId, target.floorId, target.roomId, target.segmentId)
+    if (actionId === 'add-wall-after' && actionTarget.kind === 'wall') {
+      actions.insertWallAfter(actionTarget.structureId, actionTarget.floorId, actionTarget.roomId, actionTarget.segmentId)
       return
     }
 
-    if (actionId === 'edit-furniture' && target.kind === 'furniture') {
-      actions.selectFurniture(target.structureId, target.floorId, target.roomId, target.furnitureId)
+    if (actionId === 'edit-furniture' && actionTarget.kind === 'furniture') {
+      actions.selectFurniture(actionTarget.structureId, actionTarget.floorId, actionTarget.roomId, actionTarget.furnitureId)
       actions.openFurnitureDialog({
-        structureId: target.structureId,
-        floorId: target.floorId,
-        roomId: target.roomId,
-        furnitureId: target.furnitureId,
+        structureId: actionTarget.structureId,
+        floorId: actionTarget.floorId,
+        roomId: actionTarget.roomId,
+        furnitureId: actionTarget.furnitureId,
       })
       return
     }
 
-    if (actionId === 'delete-room' && target.kind === 'room') {
-      actions.deleteRoom(target.structureId, target.floorId, target.roomId)
+    if (actionId === 'delete-room' && actionTarget.kind === 'room') {
+      actions.deleteRoom(actionTarget.structureId, actionTarget.floorId, actionTarget.roomId)
       return
     }
 
-    if (actionId === 'delete-floor' && target.kind === 'floor') {
-      actions.deleteFloor(target.structureId, target.floorId)
+    if (actionId === 'delete-floor' && actionTarget.kind === 'floor') {
+      actions.deleteFloor(actionTarget.structureId, actionTarget.floorId)
       return
     }
 
-    if (actionId === 'delete-wall' && target.kind === 'wall') {
-      actions.deleteWall(target.structureId, target.floorId, target.roomId, target.segmentId)
+    if (actionId === 'delete-wall' && actionTarget.kind === 'wall') {
+      actions.deleteWall(actionTarget.structureId, actionTarget.floorId, actionTarget.roomId, actionTarget.segmentId)
       return
     }
 
-    if (actionId === 'delete-furniture' && target.kind === 'furniture') {
-      actions.deleteFurniture(target.structureId, target.floorId, target.roomId, target.furnitureId)
+    if (actionId === 'delete-furniture' && actionTarget.kind === 'furniture') {
+      actions.deleteFurniture(actionTarget.structureId, actionTarget.floorId, actionTarget.roomId, actionTarget.furnitureId)
     }
   }
+}
+
+function getContextMenuTargets(target: CanvasTarget): CanvasTarget[] {
+  if (target.kind !== 'corner') {
+    return [target]
+  }
+
+  const wallTarget: CanvasTarget = {
+    kind: 'wall',
+    structureId: target.structureId,
+    floorId: target.floorId,
+    roomId: target.roomId,
+    segmentId: target.segmentId,
+  }
+
+  return [
+    target,
+    wallTarget,
+  ]
+}
+
+function getMenuEntryKey(target: CanvasTarget, actionId: CanvasMenuActionId) {
+  return `${target.kind}:${JSON.stringify(target)}:${actionId}`
 }

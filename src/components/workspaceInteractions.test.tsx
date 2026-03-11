@@ -603,8 +603,12 @@ describe('workspace interactions', () => {
     fireEvent.pointerDown(document.body)
 
     fireEvent.contextMenu(screen.getByTestId(`corner-hit-${wall.id}`))
-    expect(screen.getByRole('menu')).toHaveTextContent('Edit corner angle')
-    fireEvent.pointerDown(document.body)
+    const cornerMenu = screen.getByRole('menu')
+    expect(cornerMenu).toHaveTextContent('Edit corner angle')
+    expect(cornerMenu).toHaveTextContent('Edit wall measurements')
+    await user.click(within(cornerMenu).getByRole('menuitem', { name: 'Edit wall measurements' }))
+    expect(screen.getByRole('dialog')).toHaveTextContent('Edit wall')
+    await user.click(screen.getByRole('button', { name: 'Close' }))
 
     fireEvent.contextMenu(screen.getByTestId('canvas-empty'))
     expect(screen.getByRole('menu')).toHaveTextContent('Fit view')

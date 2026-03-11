@@ -521,7 +521,7 @@ export function FloorplanCanvas() {
           }
 
           const completedDrag = dragRef.current
-          endDrag(event.pointerId, completedDrag)
+          endDrag(completedDrag)
 
           if (completedDrag.kind === 'selection') {
             suppressCanvasClickRef.current = true
@@ -593,7 +593,7 @@ export function FloorplanCanvas() {
             return
           }
 
-          endDrag(event.pointerId)
+          endDrag()
         }}
         onLostPointerCapture={() => {
           dragRef.current = null
@@ -1442,7 +1442,7 @@ export function FloorplanCanvas() {
     setIsDragging(true)
   }
 
-  function endDrag(pointerId: number, completedDrag?: Exclude<DragState, null>) {
+  function endDrag(completedDrag?: Exclude<DragState, null>) {
     if (dragViewBounds && completedDrag && (completedDrag.kind === 'room' || completedDrag.kind === 'furniture')) {
       actions.setCamera(getCameraForViewBox(viewBounds, viewBox, canvasAspectRatio))
     }
