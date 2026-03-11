@@ -610,13 +610,27 @@ describe('workspace interactions', () => {
     expect(Number(screen.getByTestId(`furniture-${furniture.id}`).getAttribute('height'))).toBeCloseTo(1.5)
   })
 
-  it('renders room-closing suggestions beside inferred walls and applies them from the canvas', async () => {
+  it('renders room-closing suggestions on inferred walls and applies them from the canvas', async () => {
     const draft = createSeedState()
 
     renderEditor({ draft })
+    const svg = screen.getByLabelText('Interactive floorplan canvas')
+    mockCanvasRect(svg)
+    fireEvent(window, new Event('resize'))
 
-    expect(screen.getAllByTestId(/canvas-suggestion-actions-/).length).toBeGreaterThan(0)
-    expect(screen.getAllByTestId(/suggested-path-/).length).toBeGreaterThan(0)
+    const suggestionActions = screen.getAllByTestId(/canvas-suggestion-actions-/)
+    const suggestedPaths = screen.getAllByTestId(/suggested-path-/)
+
+    expect(suggestionActions.length).toBeGreaterThan(0)
+    expect(suggestedPaths.length).toBeGreaterThan(0)
+
+    expect(within(suggestionActions[0]).getByRole('button', { name: 'Accept inferred wall' })).toBeInTheDocument()
+    expect(within(suggestionActions[0]).getByRole('button', { name: 'Dismiss inferred wall' })).toBeInTheDocument()
+
+    const actionPosition = readSuggestionActionPosition(suggestionActions[0], 440, 360)
+    const pathPoints = readSuggestedPathPoints(suggestedPaths[0], svg, 440, 360)
+
+    expect(getMinimumSegmentDistance(actionPosition, pathPoints)).toBeLessThanOrEqual(4)
 
     const wallCount = document.querySelectorAll('[data-testid^="wall-label-"]').length
     fireEvent.click(screen.getAllByTestId(/canvas-suggestion-accept-/)[0])
@@ -631,7 +645,7 @@ describe('workspace interactions', () => {
     expect(screen.queryByRole('combobox', { name: 'Measurement source' })).not.toBeInTheDocument()
   })
 
-  it('separates clustered inferred wall actions into distinct visual lanes', () => {
+  it('keeps clustered inferred wall action boxes from collapsing onto the same point', () => {
     const draft = createSeedState()
 
     renderEditor({ draft })
@@ -648,10 +662,7 @@ describe('workspace interactions', () => {
 
     positions.forEach((position, index) => {
       positions.slice(index + 1).forEach((other) => {
-        const deltaX = Math.abs(position.x - other.x)
-        const deltaY = Math.abs(position.y - other.y)
-
-        expect(deltaX >= 56 || deltaY >= 112).toBe(true)
+        expect(Math.hypot(position.x - other.x, position.y - other.y)).toBeGreaterThanOrEqual(29)
       })
     })
   })
@@ -1125,4 +1136,43 @@ function readSuggestionActionPosition(element: HTMLElement, width: number, heigh
     x: (left / 100) * width,
     y: (top / 100) * height,
   }
+}
+
+function readSuggestedPathPoints(path: Element, svg: HTMLElement, width: number, height: number) {
+  const d = path.getAttribute('d') ?? ''
+  const viewBox = getViewBoxRect(svg)
+
+  return Array.from(d.matchAll(/[ML]\s+([-\d.]+)\s+([-\d.]+)/g), (match) => ({
+    x: ((Number.parseFloat(match[1]) - viewBox.x) / viewBox.width) * width,
+    y: ((Number.parseFloat(match[2]) - viewBox.y) / viewBox.height) * height,
+  }))
+}
+
+function getMinimumSegmentDistance(point: { x: number; y: number }, points: Array<{ x: number; y: number }>) {
+  let minimum = Number.POSITIVE_INFINITY
+
+  points.slice(0, -1).forEach((start, index) => {
+    minimum = Math.min(minimum, getPointToSegmentDistance(point, start, points[index + 1]))
+  })
+
+  return minimum
+}
+
+function getPointToSegmentDistance(point: { x: number; y: number }, start: { x: number; y: number }, end: { x: number; y: number }) {
+  const deltaX = end.x - start.x
+  const deltaY = end.y - start.y
+  const lengthSquared = deltaX ** 2 + deltaY ** 2
+
+  if (lengthSquared === 0) {
+    return Math.hypot(point.x - start.x, point.y - start.y)
+  }
+
+  const projection = ((point.x - start.x) * deltaX + (point.y - start.y) * deltaY) / lengthSquared
+  const t = Math.min(1, Math.max(0, projection))
+  const closest = {
+    x: start.x + deltaX * t,
+    y: start.y + deltaY * t,
+  }
+
+  return Math.hypot(point.x - closest.x, point.y - closest.y)
 }

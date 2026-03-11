@@ -187,8 +187,8 @@ const WHEEL_ZOOM_MULTIPLIER = 1.02
 const WHEEL_GESTURE_IDLE_MS = 160
 const WHEEL_GESTURE_ANCHOR_TOLERANCE_PX = 48
 const BUTTON_ZOOM_MULTIPLIER = 1.03
-const SUGGESTION_ACTION_WIDTH_PX = 82
-const SUGGESTION_ACTION_HEIGHT_PX = 34
+const SUGGESTION_ACTION_WIDTH_PX = 58
+const SUGGESTION_ACTION_HEIGHT_PX = 29
 
 export function FloorplanCanvas() {
   const {
@@ -1004,19 +1004,6 @@ export function FloorplanCanvas() {
         {suggestedPreviews.map((preview) => (
           <g key={preview.suggestion.id}>
             <SuggestedPath dataTestId={`suggested-path-${preview.suggestion.id}`} points={preview.points} />
-            <line
-              className="suggested-connector"
-              x1={preview.anchorPoint.x}
-              x2={preview.actionPoint.x}
-              y1={-preview.anchorPoint.y}
-              y2={-preview.actionPoint.y}
-            />
-            <circle
-              className="suggested-connector-dot"
-              cx={preview.actionPoint.x}
-              cy={-preview.actionPoint.y}
-              r={0.18}
-            />
           </g>
         ))}
 
@@ -2386,10 +2373,18 @@ function getScreenPointDistance(left: ScreenPoint, right: ScreenPoint) {
   return Math.hypot(left.x - right.x, left.y - right.y)
 }
 
-function getSuggestionCandidateAngles(clusterIndex: number) {
-  return clusterIndex % 2 === 0
-    ? [90, -90, 55, -55, 135, -135, 20, -20, 180, 0]
-    : [-90, 90, -55, 55, -135, 135, -20, 20, 0, 180]
+function getSuggestionCandidateOffsets(
+  preview: SuggestionPreview,
+  metrics: CanvasMetrics,
+  clusterIndex: number,
+) {
+  const suggestedStep = getWorldDistanceFromPixels(metrics, Math.hypot(SUGGESTION_ACTION_WIDTH_PX, SUGGESTION_ACTION_HEIGHT_PX) + 12)
+  const maxOffset = Math.max(preview.length / 2 - getWorldDistanceFromPixels(metrics, 12), 0)
+  const clampOffset = (distance: number) => clamp(distance, -maxOffset, maxOffset)
+  const direction = clusterIndex % 2 === 0 ? 1 : -1
+  const preferredOffsets = [0, suggestedStep * direction, -suggestedStep * direction, suggestedStep * 2 * direction, -suggestedStep * 2 * direction]
+
+  return preferredOffsets.map((offset) => clampOffset(offset))
 }
 
 function estimateSuggestionActionRect(point: Point, metrics: CanvasMetrics) {
@@ -2433,12 +2428,10 @@ function placeSuggestionPreviews(
   }> = []
   const occupiedPaddingX = getWorldDistanceFromPixels(metrics, 28)
   const occupiedPaddingY = getWorldDistanceFromPixels(metrics, 34)
-  const baseDistanceFloor = getWorldDistanceFromPixels(metrics, 42)
-  const ringStep = getWorldDistanceFromPixels(metrics, 56)
   const clusterRadiusPx = 112
   const preferredActionSpacingPx = 118
-  const stackedLaneWidthPx = 56
-  const stackedLaneHeightPx = 112
+  const stackedLaneWidthPx = SUGGESTION_ACTION_WIDTH_PX
+  const stackedLaneHeightPx = SUGGESTION_ACTION_HEIGHT_PX
 
   const orderedPreviews = previews
     .map((preview, originalIndex) => ({
@@ -2457,53 +2450,39 @@ function placeSuggestionPreviews(
     const clusterIndex = placedReferences.filter(
       (reference) => getScreenPointDistance(reference.anchorScreenPoint, anchorScreenPoint) < clusterRadiusPx,
     ).length
-    const baseDistance = Math.max(preview.length * 0.35, 3.4, baseDistanceFloor)
-    const ringStart = Math.floor(clusterIndex / 2)
-    const candidateAngles = getSuggestionCandidateAngles(clusterIndex)
-    const candidates = Array.from({ length: 4 }, (_, ringIndex) => ringStart + ringIndex).flatMap((ring) =>
-      candidateAngles.map((offset, angleIndex) => {
-        const candidateDistance = baseDistance + ring * ringStep
-        const actionPoint = clampSuggestionActionPoint(
-          addPolar(preview.anchorPoint, candidateDistance, preview.heading + offset),
-          viewBox,
-          metrics,
-        )
-        const actionRect = estimateSuggestionActionRect(actionPoint, metrics)
-        const actionScreenPoint = worldToScreenPoint(actionPoint, viewBox, metrics, viewRotationQuarterTurns)
-        const overlap = occupied.reduce((sum, rect) => sum + overlapArea(actionRect, rect), 0)
-        const crowdingPenalty = placedReferences.reduce((sum, reference) => {
-          const distance = getScreenPointDistance(actionScreenPoint, reference.actionScreenPoint)
-          if (distance >= preferredActionSpacingPx) {
-            return sum
-          }
-
-          return sum + (preferredActionSpacingPx - distance) ** 2
-        }, 0)
-        const lanePenalty = placedReferences.reduce((sum, reference) => {
-          const deltaX = Math.abs(actionScreenPoint.x - reference.actionScreenPoint.x)
-          const deltaY = Math.abs(actionScreenPoint.y - reference.actionScreenPoint.y)
-
-          if (deltaX >= stackedLaneWidthPx || deltaY >= stackedLaneHeightPx) {
-            return sum
-          }
-
-          return sum + (stackedLaneWidthPx - deltaX) * 140 + (stackedLaneHeightPx - deltaY) * 60
-        }, 0)
-
-        return {
-          actionPoint,
-          actionRect,
-          actionScreenPoint,
-          overlap,
-          score:
-            overlap * 1_000_000 +
-            crowdingPenalty +
-            lanePenalty +
-            ring * 24 +
-            angleIndex,
+    const candidateOffsets = getSuggestionCandidateOffsets(preview, metrics, clusterIndex)
+    const candidates = candidateOffsets.map((offset, offsetIndex) => {
+      const actionPoint = clampSuggestionActionPoint(addPolar(preview.anchorPoint, offset, preview.heading), viewBox, metrics)
+      const actionRect = estimateSuggestionActionRect(actionPoint, metrics)
+      const actionScreenPoint = worldToScreenPoint(actionPoint, viewBox, metrics, viewRotationQuarterTurns)
+      const overlap = occupied.reduce((sum, rect) => sum + overlapArea(actionRect, rect), 0)
+      const crowdingPenalty = placedReferences.reduce((sum, reference) => {
+        const distance = getScreenPointDistance(actionScreenPoint, reference.actionScreenPoint)
+        if (distance >= preferredActionSpacingPx) {
+          return sum
         }
-      }),
-    )
+
+        return sum + (preferredActionSpacingPx - distance) ** 2
+      }, 0)
+      const lanePenalty = placedReferences.reduce((sum, reference) => {
+        const deltaX = Math.abs(actionScreenPoint.x - reference.actionScreenPoint.x)
+        const deltaY = Math.abs(actionScreenPoint.y - reference.actionScreenPoint.y)
+
+        if (deltaX >= stackedLaneWidthPx || deltaY >= stackedLaneHeightPx) {
+          return sum
+        }
+
+        return sum + (stackedLaneWidthPx - deltaX) * 140 + (stackedLaneHeightPx - deltaY) * 60
+      }, 0)
+
+      return {
+        actionPoint,
+        actionRect,
+        actionScreenPoint,
+        overlap,
+        score: overlap * 1_000_000 + crowdingPenalty + lanePenalty + offsetIndex,
+      }
+    })
 
     const selectedCandidate = candidates.reduce((best, candidate) =>
       candidate.score < best.score ? candidate : best,
