@@ -210,11 +210,16 @@ export function deleteRoomSegmentPreservingGeometry(room: Room, segmentId: strin
   }
 }
 
-export function getRoomCorners(room: Room): CornerGeometry[] {
+export function getRoomCorners(room: Room, options?: { includeExits?: boolean }): CornerGeometry[] {
   const geometry = roomToGeometry(room)
 
-  return geometry.segments.map((segment, index) => {
+  return geometry.segments.flatMap((segment, index) => {
     const nextSegment = geometry.segments[index + 1] ?? (geometry.closed ? geometry.segments[0] : null)
+
+    if (!nextSegment && !options?.includeExits) {
+      return []
+    }
+
     const incomingLabel = segment.label || `Wall ${index + 1}`
     const outgoingLabel = nextSegment ? nextSegment.label || `Wall ${(index + 1) % geometry.segments.length + 1}` : null
 

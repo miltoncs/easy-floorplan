@@ -558,6 +558,32 @@ describe('workspace interactions', () => {
     )
   })
 
+  it('does not show angle targets for open wall ends', () => {
+    const draft = createSeedState()
+    const room = createRoom({
+      id: 'open-room',
+      name: 'Open room',
+      anchor: { x: 0, y: 0 },
+      startHeading: 0,
+      segments: [
+        createSegment({ id: 'seg-a', label: 'A', length: 10, turn: 90 }),
+        createSegment({ id: 'seg-b', label: 'B', length: 8, turn: 90 }),
+      ],
+      furniture: [],
+    })
+
+    draft.structures[0].floors[0].rooms = [room]
+    draft.selectedRoomId = room.id
+    draft.selectedFurnitureId = null
+
+    renderEditor({ draft })
+
+    expect(screen.getByTestId('corner-hit-seg-a')).toBeInTheDocument()
+    expect(screen.queryByTestId('corner-hit-seg-b')).not.toBeInTheDocument()
+    expect(screen.getByTestId('corner-hover-overlay-seg-a')).toBeInTheDocument()
+    expect(screen.queryByTestId('corner-hover-overlay-seg-b')).not.toBeInTheDocument()
+  })
+
   it('edits furniture dimensions using feet-based inputs', async () => {
     const user = userEvent.setup()
     const draft = createSeedState()

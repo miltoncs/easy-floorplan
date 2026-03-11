@@ -3,6 +3,7 @@ import { createFurniture, createRoom, createSegment } from './blueprint'
 import {
   deleteRoomSegmentPreservingGeometry,
   getCornerAngleBetweenWalls,
+  getRoomCorners,
   getTurnFromCornerAngle,
   roomToGeometry,
   round,
@@ -75,6 +76,40 @@ describe('validateRoomWalls', () => {
     expect(getTurnFromCornerAngle(180, 'left')).toBe(0)
     expect(getTurnFromCornerAngle(90, 'left')).toBe(90)
     expect(getTurnFromCornerAngle(135, 'right')).toBe(-45)
+  })
+
+  it('omits open-chain exit turns from room corners unless explicitly requested', () => {
+    const room = createRoom({
+      anchor: { x: 0, y: 0 },
+      startHeading: 0,
+      segments: [
+        createSegment({ id: 'seg-a', label: 'A', length: 10, turn: 90 }),
+        createSegment({ id: 'seg-b', label: 'B', length: 8, turn: -90 }),
+      ],
+    })
+
+    expect(getRoomCorners(room)).toEqual([
+      expect.objectContaining({
+        segmentId: 'seg-a',
+        incomingLabel: 'A',
+        outgoingLabel: 'B',
+        isExit: false,
+      }),
+    ])
+    expect(getRoomCorners(room, { includeExits: true })).toEqual([
+      expect.objectContaining({
+        segmentId: 'seg-a',
+        incomingLabel: 'A',
+        outgoingLabel: 'B',
+        isExit: false,
+      }),
+      expect.objectContaining({
+        segmentId: 'seg-b',
+        incomingLabel: 'B',
+        outgoingLabel: null,
+        isExit: true,
+      }),
+    ])
   })
 
   it('preserves closed-room wall geometry when deleting a wall', () => {

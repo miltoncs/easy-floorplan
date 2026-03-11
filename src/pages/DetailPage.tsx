@@ -280,45 +280,47 @@ export function DetailPage() {
                     </div>
                   </section>
 
-                  <section className="measurement-section">
-                    <div className="section-heading compact">
-                      <div>
-                        <p className="panel-kicker">Corners</p>
-                        <h2>Angles between walls</h2>
-                      </div>
-                    </div>
-                    <div className="measurement-table measurement-table--corners">
-                      <div className="measurement-head measurement-head--corners">
-                        <span>Corner</span>
-                        <span>Angle</span>
-                        <span>Between</span>
-                        <span />
-                      </div>
-                      {roomCorners.map((corner, index) => (
-                        <div className="measurement-row measurement-row--corners" key={corner.segmentId}>
-                          <span className="row-label">{corner.isExit ? 'Exit turn' : `Corner ${index + 1}`}</span>
-                          <span>{describeCornerAngle(corner.turn)}</span>
-                          <span>{corner.isExit ? `${corner.incomingLabel} -> next wall` : `${corner.incomingLabel} -> ${corner.outgoingLabel}`}</span>
-                          <div className="row-actions">
-                            <button
-                              className="ghost-button small"
-                              onClick={() =>
-                                actions.openCornerDialog({
-                                  structureId: activeStructure!.id,
-                                  floorId: activeFloor!.id,
-                                  roomId: selectedRoom.id,
-                                  segmentId: corner.segmentId,
-                                })
-                              }
-                              type="button"
-                            >
-                              Edit angle
-                            </button>
-                          </div>
+                  {roomCorners.length > 0 ? (
+                    <section className="measurement-section">
+                      <div className="section-heading compact">
+                        <div>
+                          <p className="panel-kicker">Corners</p>
+                          <h2>Angles between walls</h2>
                         </div>
-                      ))}
-                    </div>
-                  </section>
+                      </div>
+                      <div className="measurement-table measurement-table--corners">
+                        <div className="measurement-head measurement-head--corners">
+                          <span>Corner</span>
+                          <span>Angle</span>
+                          <span>Between</span>
+                          <span />
+                        </div>
+                        {roomCorners.map((corner, index) => (
+                          <div className="measurement-row measurement-row--corners" key={corner.segmentId}>
+                            <span className="row-label">{`Corner ${index + 1}`}</span>
+                            <span>{describeCornerAngle(corner.turn)}</span>
+                            <span>{`${corner.incomingLabel} -> ${corner.outgoingLabel}`}</span>
+                            <div className="row-actions">
+                              <button
+                                className="ghost-button small"
+                                onClick={() =>
+                                  actions.openCornerDialog({
+                                    structureId: activeStructure!.id,
+                                    floorId: activeFloor!.id,
+                                    roomId: selectedRoom.id,
+                                    segmentId: corner.segmentId,
+                                  })
+                                }
+                                type="button"
+                              >
+                                Edit angle
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                  ) : null}
                 </div>
               </>
             ) : (
