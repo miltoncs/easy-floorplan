@@ -43,6 +43,63 @@ describe('workspace interactions', () => {
     expect(cornerDialog).toHaveTextContent(/\+?90° between walls, left turn/)
   })
 
+  it('cancels dialog edits and room dragging when escape is pressed', async () => {
+    const user = userEvent.setup()
+    const draft = createSeedState()
+    const room = draft.structures[0].floors[0].rooms[0]
+
+    renderEditor({ draft })
+
+    const svg = screen.getByLabelText('Interactive floorplan canvas')
+    const stage = screen.getByTestId('canvas-stage')
+    mockCanvasRect(svg)
+
+    fireEvent.click(screen.getByTestId(`room-label-${room.id}`))
+    const nameInput = screen.getByRole('textbox', { name: 'Name' })
+    await user.clear(nameInput)
+    await user.type(nameInput, 'Canceled rename')
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(screen.getByTestId(`room-label-${room.id}`)).toHaveTextContent(room.name)
+
+    const initialRoomLeft = getAnnotationLeft(`room-label-${room.id}`)
+
+    fireEvent.pointerDown(screen.getByTestId(`room-label-${room.id}`), {
+      button: 0,
+      pointerId: 21,
+      clientX: 160,
+      clientY: 140,
+    })
+    fireEvent.pointerMove(svg, {
+      pointerId: 21,
+      clientX: 220,
+      clientY: 176,
+    })
+
+    await waitFor(() => expect(getAnnotationLeft(`room-label-${room.id}`)).toBeGreaterThan(initialRoomLeft))
+    expect(stage).toHaveClass('dragging')
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+
+    await waitFor(() => expect(getAnnotationLeft(`room-label-${room.id}`)).toBeCloseTo(initialRoomLeft, 3))
+    expect(stage).not.toHaveClass('dragging')
+
+    fireEvent.pointerMove(svg, {
+      pointerId: 21,
+      clientX: 280,
+      clientY: 220,
+    })
+    expect(getAnnotationLeft(`room-label-${room.id}`)).toBeCloseTo(initialRoomLeft, 3)
+
+    fireEvent.pointerUp(svg, {
+      pointerId: 21,
+      clientX: 280,
+      clientY: 220,
+    })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
   it('supports wheel zoom, room and furniture dragging, and wall anchors', async () => {
     const draft = createSeedState()
     const room = draft.structures[0].floors[0].rooms[0]
@@ -713,6 +770,10 @@ function getViewBoxCenter(element: HTMLElement) {
     x: x + width / 2,
     y: y + height / 2,
   }
+}
+
+function getAnnotationLeft(testId: string) {
+  return Number.parseFloat(screen.getByTestId(testId).getAttribute('style')?.match(/left:\s*([\d.]+)px/)?.[1] ?? '0')
 }
 
 function readSuggestionActionPosition(element: HTMLElement, width: number, height: number) {

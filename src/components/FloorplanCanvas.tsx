@@ -9,7 +9,16 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react'
 import { useEditor } from '../context/EditorContext'
-import { DEFAULT_LABEL_FONT_SIZE, computeFloorBounds, findSegmentById, getRoomLabelPoint, getViewBox, padBounds } from '../lib/blueprint'
+import {
+  DEFAULT_LABEL_FONT_SIZE,
+  computeFloorBounds,
+  findFurnitureById,
+  findRoomById,
+  findSegmentById,
+  getRoomLabelPoint,
+  getViewBox,
+  padBounds,
+} from '../lib/blueprint'
 import { parseDistanceInput } from '../lib/distance'
 import {
   addPolar,
@@ -33,6 +42,8 @@ type DragState =
       clientY: number
       startOffsetX: number
       startOffsetY: number
+      currentOffsetX: number
+      currentOffsetY: number
       moved: boolean
     }
   | {
@@ -45,6 +56,8 @@ type DragState =
       roomId: string
       startX: number
       startY: number
+      currentX: number
+      currentY: number
       moved: boolean
     }
   | {
@@ -58,6 +71,8 @@ type DragState =
       furnitureId: string
       startX: number
       startY: number
+      currentX: number
+      currentY: number
       moved: boolean
     }
   | {
@@ -173,6 +188,7 @@ export function FloorplanCanvas() {
   const svgRef = useRef<SVGSVGElement | null>(null)
   const dragRef = useRef<DragState>(null)
   const wheelGestureRef = useRef<WheelGestureState | null>(null)
+  const cancelActiveInteractionRef = useRef<(() => void) | null>(null)
   const suppressCanvasClickRef = useRef(false)
   const suppressTargetClickRef = useRef<CanvasTarget | null>(null)
   const suppressTargetClickTimerRef = useRef<number | null>(null)
@@ -404,6 +420,99 @@ export function FloorplanCanvas() {
     }
   }, [])
 
+  const cancelActiveInteraction = () => {
+    setInlineWallEditor(null)
+
+    const activeDrag = dragRef.current
+    if (!activeDrag) {
+      return
+    }
+
+    if (activeDrag.kind === 'canvas') {
+      actions.setCamera({
+        zoom: ui.camera.zoom,
+        offset: {
+          x: activeDrag.startOffsetX,
+          y: activeDrag.startOffsetY,
+        },
+      })
+      suppressCanvasClickRef.current = true
+      endDrag()
+      return
+    }
+
+    if (activeDrag.kind === 'selection') {
+      suppressCanvasClickRef.current = true
+      setSelectionBox(null)
+      endDrag()
+      return
+    }
+
+    if (activeDrag.kind === 'room') {
+      actions.mutateDraft((draftState) => {
+        const room = findRoomById(draftState, activeDrag.structureId, activeDrag.floorId, activeDrag.roomId)
+        if (!room) {
+          return
+        }
+
+        room.anchor.x = activeDrag.startX
+        room.anchor.y = activeDrag.startY
+      }, {
+        recordHistory: false,
+        touchStructure: false,
+      })
+      suppressNextTargetClick({
+        kind: 'room',
+        structureId: activeDrag.structureId,
+        floorId: activeDrag.floorId,
+        roomId: activeDrag.roomId,
+      }, { persistUntilConsumed: true })
+      endDrag()
+      return
+    }
+
+    actions.mutateDraft((draftState) => {
+      const item = findFurnitureById(
+        draftState,
+        activeDrag.structureId,
+        activeDrag.floorId,
+        activeDrag.roomId,
+        activeDrag.furnitureId,
+      )
+      if (!item) {
+        return
+      }
+
+      item.x = activeDrag.startX
+      item.y = activeDrag.startY
+    }, {
+      recordHistory: false,
+      touchStructure: false,
+    })
+    suppressNextTargetClick({
+      kind: 'furniture',
+      structureId: activeDrag.structureId,
+      floorId: activeDrag.floorId,
+      roomId: activeDrag.roomId,
+      furnitureId: activeDrag.furnitureId,
+    }, { persistUntilConsumed: true })
+    endDrag()
+  }
+  cancelActiveInteractionRef.current = cancelActiveInteraction
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') {
+        return
+      }
+
+      cancelActiveInteractionRef.current?.()
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
   return (
     <div
       className={[
@@ -462,13 +571,16 @@ export function FloorplanCanvas() {
           const activeDrag = dragRef.current
 
           if (activeDrag.kind === 'canvas') {
+            const nextOffset = {
+              x: activeDrag.startOffsetX - deltaX,
+              y: activeDrag.startOffsetY - deltaY,
+            }
             activeDrag.moved = moved
+            activeDrag.currentOffsetX = nextOffset.x
+            activeDrag.currentOffsetY = nextOffset.y
             actions.setCamera({
               zoom: ui.camera.zoom,
-              offset: {
-                x: activeDrag.startOffsetX - deltaX,
-                y: activeDrag.startOffsetY - deltaY,
-              },
+              offset: nextOffset,
             })
             return
           }
@@ -482,37 +594,48 @@ export function FloorplanCanvas() {
           }
 
           if (activeDrag.kind === 'room') {
+            const nextX = activeDrag.startX + deltaX
+            const nextY = activeDrag.startY - deltaY
             activeDrag.moved = moved
+            activeDrag.currentX = nextX
+            activeDrag.currentY = nextY
             actions.mutateDraft((draftState) => {
-              const room = draftState.structures
-                .find((structure) => structure.id === activeDrag.structureId)
-                ?.floors.find((floor) => floor.id === activeDrag.floorId)
-                ?.rooms.find((room) => room.id === activeDrag.roomId)
-
+              const room = findRoomById(draftState, activeDrag.structureId, activeDrag.floorId, activeDrag.roomId)
               if (!room) {
                 return
               }
 
-              room.anchor.x = activeDrag.startX + deltaX
-              room.anchor.y = activeDrag.startY - deltaY
+              room.anchor.x = nextX
+              room.anchor.y = nextY
+            }, {
+              recordHistory: false,
+              touchStructure: false,
             })
             return
           }
 
+          const nextX = activeDrag.startX + deltaX
+          const nextY = activeDrag.startY - deltaY
           activeDrag.moved = moved
+          activeDrag.currentX = nextX
+          activeDrag.currentY = nextY
           actions.mutateDraft((draftState) => {
-            const item = draftState.structures
-              .find((structure) => structure.id === activeDrag.structureId)
-              ?.floors.find((floor) => floor.id === activeDrag.floorId)
-              ?.rooms.find((room) => room.id === activeDrag.roomId)
-              ?.furniture.find((furniture) => furniture.id === activeDrag.furnitureId)
-
+            const item = findFurnitureById(
+              draftState,
+              activeDrag.structureId,
+              activeDrag.floorId,
+              activeDrag.roomId,
+              activeDrag.furnitureId,
+            )
             if (!item) {
               return
             }
 
-            item.x = activeDrag.startX + deltaX
-            item.y = activeDrag.startY - deltaY
+            item.x = nextX
+            item.y = nextY
+          }, {
+            recordHistory: false,
+            touchStructure: false,
           })
         }}
         onPointerUp={(event) => {
@@ -551,6 +674,40 @@ export function FloorplanCanvas() {
           }
 
           if (completedDrag.moved && (completedDrag.kind === 'room' || completedDrag.kind === 'furniture')) {
+            const delta = {
+              x: completedDrag.currentX - completedDrag.startX,
+              y: completedDrag.currentY - completedDrag.startY,
+            }
+
+            actions.mutateDraft((draftState) => {
+              if (completedDrag.kind === 'room') {
+                const room = findRoomById(draftState, completedDrag.structureId, completedDrag.floorId, completedDrag.roomId)
+                if (!room) {
+                  return
+                }
+
+                room.anchor.x = completedDrag.startX
+                room.anchor.y = completedDrag.startY
+                return
+              }
+
+              const item = findFurnitureById(
+                draftState,
+                completedDrag.structureId,
+                completedDrag.floorId,
+                completedDrag.roomId,
+                completedDrag.furnitureId,
+              )
+              if (!item) {
+                return
+              }
+
+              item.x = completedDrag.startX
+              item.y = completedDrag.startY
+            }, {
+              recordHistory: false,
+              touchStructure: false,
+            })
             suppressNextTargetClick(
               completedDrag.kind === 'room'
                 ? {
@@ -566,6 +723,18 @@ export function FloorplanCanvas() {
                     roomId: completedDrag.roomId,
                     furnitureId: completedDrag.furnitureId,
                   },
+            )
+            if (completedDrag.kind === 'room') {
+              actions.moveRoom(completedDrag.structureId, completedDrag.floorId, completedDrag.roomId, delta)
+              return
+            }
+
+            actions.moveFurniture(
+              completedDrag.structureId,
+              completedDrag.floorId,
+              completedDrag.roomId,
+              completedDrag.furnitureId,
+              delta,
             )
             return
           }
@@ -593,7 +762,7 @@ export function FloorplanCanvas() {
             return
           }
 
-          endDrag()
+          cancelActiveInteraction()
         }}
         onLostPointerCapture={() => {
           dragRef.current = null
@@ -661,6 +830,8 @@ export function FloorplanCanvas() {
               clientY: event.clientY,
               startOffsetX: ui.camera.offset.x,
               startOffsetY: ui.camera.offset.y,
+              currentOffsetX: ui.camera.offset.x,
+              currentOffsetY: ui.camera.offset.y,
               moved: false,
             })
             actions.setFocusedTarget(canvasTarget)
@@ -1160,11 +1331,25 @@ export function FloorplanCanvas() {
     })
   }
 
-  function suppressNextTargetClick(target: CanvasTarget) {
+  function clearSuppressedTargetClick() {
+    suppressTargetClickRef.current = null
+    if (suppressTargetClickTimerRef.current !== null) {
+      window.clearTimeout(suppressTargetClickTimerRef.current)
+      suppressTargetClickTimerRef.current = null
+    }
+  }
+
+  function suppressNextTargetClick(target: CanvasTarget, options?: { persistUntilConsumed?: boolean }) {
     suppressTargetClickRef.current = target
     if (suppressTargetClickTimerRef.current !== null) {
       window.clearTimeout(suppressTargetClickTimerRef.current)
+      suppressTargetClickTimerRef.current = null
     }
+
+    if (options?.persistUntilConsumed) {
+      return
+    }
+
     suppressTargetClickTimerRef.current = window.setTimeout(() => {
       suppressTargetClickRef.current = null
       suppressTargetClickTimerRef.current = null
@@ -1176,11 +1361,7 @@ export function FloorplanCanvas() {
       return false
     }
 
-    suppressTargetClickRef.current = null
-    if (suppressTargetClickTimerRef.current !== null) {
-      window.clearTimeout(suppressTargetClickTimerRef.current)
-      suppressTargetClickTimerRef.current = null
-    }
+    clearSuppressedTargetClick()
     return true
   }
 
@@ -1394,6 +1575,8 @@ export function FloorplanCanvas() {
         roomId: target.roomId,
         startX: room.anchor.x,
         startY: room.anchor.y,
+        currentX: room.anchor.x,
+        currentY: room.anchor.y,
         moved: false,
       })
       return
@@ -1421,6 +1604,8 @@ export function FloorplanCanvas() {
         furnitureId: target.furnitureId,
         startX: item.x,
         startY: item.y,
+        currentX: item.x,
+        currentY: item.y,
         moved: false,
       })
     }
@@ -1433,6 +1618,8 @@ export function FloorplanCanvas() {
     if (event.button !== 0 || !svgRef.current) {
       return
     }
+
+    clearSuppressedTargetClick()
 
     if (dragState.kind === 'room' || dragState.kind === 'furniture') {
       setDragViewBounds(viewBounds)
@@ -1511,6 +1698,8 @@ export function FloorplanCanvas() {
           roomId: room.id,
           startX: room.anchor.x,
           startY: room.anchor.y,
+          currentX: room.anchor.x,
+          currentY: room.anchor.y,
           moved: false,
         })
       },
@@ -1623,6 +1812,8 @@ export function FloorplanCanvas() {
                         furnitureId: item.id,
                         startX: item.x,
                         startY: item.y,
+                        currentX: item.x,
+                        currentY: item.y,
                         moved: false,
                       })
                     }}
