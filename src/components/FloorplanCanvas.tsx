@@ -300,7 +300,8 @@ export function FloorplanCanvas() {
             selectedFurnitureId: draft.selectedFurnitureId,
             showRoomFloorLabels: draft.showRoomFloorLabels,
             showFurnitureLabels: draft.editorMode === 'furniture',
-            showWallLabels: draft.showWallLabels && draft.editorMode !== 'furniture',
+            showWallLabels: draft.showWallLabels,
+            allowHoverWallLabels: draft.editorMode !== 'furniture',
             labelFontSize: draft.labelFontSize,
             reservedRects: reservedAnnotationRects,
             hoveredTarget: ui.hoveredTarget,
@@ -1220,94 +1221,98 @@ export function FloorplanCanvas() {
         : null}
 
       {!showSimplifiedDragPreview ? (
-        <div aria-label="Canvas view controls" className="canvas-toolbar">
-          <div className="canvas-toolbar-group canvas-toolbar-group--toggles">
-            <label className="toggle">
-              <input checked={draft.showGrid} type="checkbox" onChange={(event) => actions.toggleGrid(event.target.checked)} />
-              <span>Grid</span>
-            </label>
-            <label className="toggle">
-              <input
-                checked={draft.showInferred}
-                type="checkbox"
-                onChange={(event) => actions.toggleInferred(event.target.checked)}
-              />
-              <span>Inference</span>
-            </label>
-            <label className="toggle">
-              <input
-                checked={draft.showRoomFloorLabels}
-                type="checkbox"
-                onChange={(event) => actions.toggleRoomFloorLabels(event.target.checked)}
-              />
-              <span>Room/Floor</span>
-            </label>
-            <label className="toggle">
-              <input
-                checked={draft.showWallLabels}
-                type="checkbox"
-                onChange={(event) => actions.toggleWallLabels(event.target.checked)}
-              />
-              <span>Distances</span>
-            </label>
-            <label className="toggle">
-              <input
-                checked={draft.showAngleLabels}
-                type="checkbox"
-                onChange={(event) => actions.toggleAngleLabels(event.target.checked)}
-              />
-              <span>Angles</span>
-            </label>
+        <>
+          <div aria-label="Canvas display toggles" className="canvas-toolbar canvas-toolbar--toggles">
+            <div className="canvas-toolbar-group canvas-toolbar-group--toggles">
+              <label className="toggle">
+                <input checked={draft.showGrid} type="checkbox" onChange={(event) => actions.toggleGrid(event.target.checked)} />
+                <span>Grid</span>
+              </label>
+              <label className="toggle">
+                <input
+                  checked={draft.showInferred}
+                  type="checkbox"
+                  onChange={(event) => actions.toggleInferred(event.target.checked)}
+                />
+                <span>Inference</span>
+              </label>
+              <label className="toggle">
+                <input
+                  checked={draft.showRoomFloorLabels}
+                  type="checkbox"
+                  onChange={(event) => actions.toggleRoomFloorLabels(event.target.checked)}
+                />
+                <span>Labels</span>
+              </label>
+              <label className="toggle">
+                <input
+                  checked={draft.showWallLabels}
+                  type="checkbox"
+                  onChange={(event) => actions.toggleWallLabels(event.target.checked)}
+                />
+                <span>Wall Lengths</span>
+              </label>
+              <label className="toggle">
+                <input
+                  checked={draft.showAngleLabels}
+                  type="checkbox"
+                  onChange={(event) => actions.toggleAngleLabels(event.target.checked)}
+                />
+                <span>Angles</span>
+              </label>
+            </div>
           </div>
-          <div className="canvas-toolbar-group canvas-toolbar-group--zoom">
-            <button
-              aria-label="Rotate view counterclockwise"
-              className="ghost-button small icon-button canvas-toolbar-icon-button"
-              onClick={() => setViewRotationQuarterTurns((current) => normalizeQuarterTurns(current - 1))}
-              title="Rotate view counterclockwise"
-              type="button"
-            >
-              <RotateViewIcon direction="counterclockwise" />
-            </button>
-            <button
-              aria-label="Rotate view clockwise"
-              className="ghost-button small icon-button canvas-toolbar-icon-button"
-              onClick={() => setViewRotationQuarterTurns((current) => normalizeQuarterTurns(current + 1))}
-              title="Rotate view clockwise"
-              type="button"
-            >
-              <RotateViewIcon direction="clockwise" />
-            </button>
-            <button
-              className="ghost-button small"
-              onClick={() =>
-                actions.setCamera({
-                  zoom: ui.camera.zoom / BUTTON_ZOOM_MULTIPLIER,
-                  offset: ui.camera.offset,
-                })
-              }
-              type="button"
-            >
-              -
-            </button>
-            <span className="toolbar-pill">{Math.round(ui.camera.zoom * 100)}%</span>
-            <button
-              className="ghost-button small"
-              onClick={() =>
-                actions.setCamera({
-                  zoom: ui.camera.zoom * BUTTON_ZOOM_MULTIPLIER,
-                  offset: ui.camera.offset,
-                })
-              }
-              type="button"
-            >
-              +
-            </button>
-            <button className="ghost-button small" onClick={() => actions.resetCamera()} type="button">
-              Fit
-            </button>
+          <div aria-label="Canvas view controls" className="canvas-toolbar canvas-toolbar--camera">
+            <div className="canvas-toolbar-group canvas-toolbar-group--zoom">
+              <button
+                aria-label="Rotate view counterclockwise"
+                className="ghost-button small icon-button canvas-toolbar-icon-button"
+                onClick={() => setViewRotationQuarterTurns((current) => normalizeQuarterTurns(current - 1))}
+                title="Rotate view counterclockwise"
+                type="button"
+              >
+                <RotateViewIcon direction="counterclockwise" />
+              </button>
+              <button
+                aria-label="Rotate view clockwise"
+                className="ghost-button small icon-button canvas-toolbar-icon-button"
+                onClick={() => setViewRotationQuarterTurns((current) => normalizeQuarterTurns(current + 1))}
+                title="Rotate view clockwise"
+                type="button"
+              >
+                <RotateViewIcon direction="clockwise" />
+              </button>
+              <button
+                className="ghost-button small"
+                onClick={() =>
+                  actions.setCamera({
+                    zoom: ui.camera.zoom / BUTTON_ZOOM_MULTIPLIER,
+                    offset: ui.camera.offset,
+                  })
+                }
+                type="button"
+              >
+                -
+              </button>
+              <span className="toolbar-pill">{Math.round(ui.camera.zoom * 100)}%</span>
+              <button
+                className="ghost-button small"
+                onClick={() =>
+                  actions.setCamera({
+                    zoom: ui.camera.zoom * BUTTON_ZOOM_MULTIPLIER,
+                    offset: ui.camera.offset,
+                  })
+                }
+                type="button"
+              >
+                +
+              </button>
+              <button className="ghost-button small" onClick={() => actions.resetCamera()} type="button">
+                Fit
+              </button>
+            </div>
           </div>
-        </div>
+        </>
       ) : null}
 
       {!showSimplifiedDragPreview ? (
@@ -1419,19 +1424,6 @@ export function FloorplanCanvas() {
                           {annotation.text}
                         </button>
                       )}
-                      <button
-                        aria-label="Open full wall editor"
-                        className="canvas-wall-chip__menu"
-                        data-testid={`wall-menu-${annotation.id}`}
-                        onClick={() => openFullWallEditor(wallTarget)}
-                        type="button"
-                      >
-                        <span className="canvas-wall-chip__menu-icon" aria-hidden="true">
-                          <span />
-                          <span />
-                          <span />
-                        </span>
-                      </button>
                     </div>
                   )
                 })()
@@ -1635,15 +1627,6 @@ export function FloorplanCanvas() {
       value: formatEditableLength(segment.length),
       error: null,
     })
-  }
-
-  function openFullWallEditor(target: CanvasTarget) {
-    if (target.kind !== 'wall') {
-      return
-    }
-
-    setInlineWallEditor(null)
-    handleWallClick(target)
   }
 
   function commitInlineWallEdit(nextValue?: string) {
@@ -2206,6 +2189,8 @@ function shouldIgnoreWheelZoom(target: EventTarget | null) {
 }
 
 function RotateViewIcon({ direction }: { direction: 'clockwise' | 'counterclockwise' }) {
+  const isClockwise = direction === 'clockwise'
+
   return (
     <svg
       aria-hidden="true"
@@ -2214,20 +2199,18 @@ function RotateViewIcon({ direction }: { direction: 'clockwise' | 'counterclockw
       stroke="currentColor"
       strokeLinecap="round"
       strokeLinejoin="round"
-      strokeWidth="1.4"
-      viewBox="0 0 16 16"
+      strokeWidth="1.55"
+      viewBox="0 0 20 20"
     >
-      {direction === 'counterclockwise' ? (
+      {isClockwise ? (
         <>
-          <path d="M8 2.75a5.25 5.25 0 1 0 4.56 2.65" />
-          <path d="M8 2.75H4.75" />
-          <path d="M4.75 2.75v3.25" />
+          <path d="M14.8 8.7a5.85 5.85 0 1 1-7.1-4.15" />
+          <path d="M7.15 3.95 4 4.3l1.85 2.65Z" fill="currentColor" stroke="none" />
         </>
       ) : (
         <>
-          <path d="M8 2.75a5.25 5.25 0 1 1-4.56 2.65" />
-          <path d="M8 2.75h3.25" />
-          <path d="M11.25 2.75v3.25" />
+          <path d="M5.2 8.7a5.85 5.85 0 1 0 7.1-4.15" />
+          <path d="M12.85 3.95 16 4.3 14.15 6.95Z" fill="currentColor" stroke="none" />
         </>
       )}
     </svg>
@@ -2921,6 +2904,7 @@ function buildCanvasAnnotations({
   showRoomFloorLabels,
   showFurnitureLabels,
   showWallLabels,
+  allowHoverWallLabels,
   labelFontSize,
   reservedRects,
   hoveredTarget,
@@ -2942,6 +2926,7 @@ function buildCanvasAnnotations({
   showRoomFloorLabels: boolean
   showFurnitureLabels: boolean
   showWallLabels: boolean
+  allowHoverWallLabels: boolean
   labelFontSize: number
   reservedRects: CanvasRect[]
   hoveredTarget: CanvasTarget | null
@@ -3090,7 +3075,7 @@ function buildCanvasAnnotations({
     })
   })
 
-  if (showWallLabels && selectedRoomGeometry && selectedRoom && activeStructureId && selectedRoomId) {
+  if (allowHoverWallLabels && selectedRoomGeometry && selectedRoom && activeStructureId && selectedRoomId) {
     selectedRoomGeometry.segments.forEach((segment) => {
       const midpointScreen = worldToScreenPoint(midpoint(segment.start, segment.end), viewBox, canvasMetrics, viewRotationQuarterTurns)
       const start = worldToScreenPoint(segment.start, viewBox, canvasMetrics, viewRotationQuarterTurns)
@@ -3102,11 +3087,17 @@ function buildCanvasAnnotations({
         roomId: selectedRoomId,
         segmentId: segment.id,
       }
+      const wallEditing = editingWallSegmentId === segment.id
+      const wallHovered = matchesTarget(hoveredTarget, wallTarget)
+      const shouldRenderWallLabel = showWallLabels || wallHovered || wallEditing
+
+      if (!shouldRenderWallLabel) {
+        return
+      }
+
       const wallSize = estimateAnnotationSize('wall', formatFeet(segment.length), labelFontSize)
       const wallSelected = isTargetSelected(selectionTargets, wallTarget)
       const wallFocused = matchesTarget(focusedTarget, wallTarget)
-      const wallEditing = editingWallSegmentId === segment.id
-      const wallHovered = matchesTarget(hoveredTarget, wallTarget)
 
       descriptors.push({
         id: segment.id,
@@ -3117,7 +3108,7 @@ function buildCanvasAnnotations({
         widthPx: wallSize.widthPx,
         heightPx: wallSize.heightPx,
         priority: wallEditing ? 99 : wallSelected || wallFocused ? 94 : wallHovered ? 88 : 76,
-        required: true,
+        required: showWallLabels || wallHovered || wallEditing,
         candidateOffsets: buildWallAnnotationOffsets(start, end),
       })
     })

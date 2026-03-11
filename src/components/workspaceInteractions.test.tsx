@@ -6,7 +6,7 @@ import { createFurniture, createRoom, createSegment } from '../lib/blueprint'
 import { renderEditor } from '../test/renderEditor'
 
 describe('workspace interactions', () => {
-  it('opens rename, inline wall edits, and corner dialogs from direct canvas clicks', async () => {
+  it('opens rename, inline wall edits, wall dialogs, and corner dialogs from direct canvas clicks', async () => {
     const user = userEvent.setup()
     const draft = createSeedState()
     const livingRoom = draft.structures[0].floors[0].rooms[0]
@@ -27,7 +27,7 @@ describe('workspace interactions', () => {
     fireEvent.keyDown(inlineLength, { key: 'Enter' })
     await waitFor(() => expect(screen.getByTestId(`wall-label-${firstWall.id}`)).toHaveTextContent(`10' 6"`))
 
-    fireEvent.click(screen.getByTestId(`wall-menu-${firstWall.id}`))
+    fireEvent.click(screen.getByTestId(`wall-hit-${firstWall.id}`))
     expect(screen.getByRole('dialog')).toHaveTextContent('Edit wall')
     expect(screen.getByDisplayValue(firstWall.label)).toBeInTheDocument()
     expect(screen.queryByRole('spinbutton', { name: 'Angle (deg)' })).not.toBeInTheDocument()
@@ -599,8 +599,8 @@ describe('workspace interactions', () => {
       expect(document.querySelectorAll('[data-testid^="wall-label-"]').length).toBeGreaterThan(wallCount),
     )
 
-    const wallMenus = screen.getAllByTestId(/wall-menu-/)
-    fireEvent.click(wallMenus[wallMenus.length - 1])
+    const wallHits = screen.getAllByTestId(/wall-hit-/)
+    fireEvent.click(wallHits[wallHits.length - 1])
     expect(screen.getByRole('dialog')).toHaveTextContent('Edit wall')
     expect(screen.queryByRole('combobox', { name: 'Measurement source' })).not.toBeInTheDocument()
   })
@@ -718,20 +718,27 @@ describe('workspace interactions', () => {
     expect(cornerHit).not.toHaveClass('hovered')
   })
 
-  it('toggles canvas wall distance labels', async () => {
+  it('toggles canvas wall length labels and shows a hovered wall length when hidden', async () => {
     const user = userEvent.setup()
     const draft = createSeedState()
     const firstWall = draft.structures[0].floors[0].rooms[0].segments[0]
 
     renderEditor({ draft })
 
+    const wallHit = screen.getByTestId(`wall-hit-${firstWall.id}`)
     expect(screen.getByTestId(`wall-label-${firstWall.id}`)).toBeInTheDocument()
 
-    await user.click(screen.getByRole('checkbox', { name: 'Distances' }))
+    await user.click(screen.getByRole('checkbox', { name: 'Wall Lengths' }))
 
     expect(screen.queryByTestId(`wall-label-${firstWall.id}`)).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('checkbox', { name: 'Distances' }))
+    fireEvent.mouseEnter(wallHit)
+    expect(screen.getByTestId(`wall-label-${firstWall.id}`)).toBeInTheDocument()
+
+    fireEvent.mouseLeave(wallHit)
+    await waitFor(() => expect(screen.queryByTestId(`wall-label-${firstWall.id}`)).not.toBeInTheDocument())
+
+    await user.click(screen.getByRole('checkbox', { name: 'Wall Lengths' }))
 
     expect(screen.getByTestId(`wall-label-${firstWall.id}`)).toBeInTheDocument()
   })
@@ -747,12 +754,12 @@ describe('workspace interactions', () => {
     expect(screen.getByTestId(`floor-label-${floor.id}`)).toBeInTheDocument()
     expect(screen.getByTestId(`room-label-${room.id}`)).toBeInTheDocument()
 
-    await user.click(screen.getByRole('checkbox', { name: 'Room/Floor' }))
+    await user.click(screen.getByRole('checkbox', { name: 'Labels' }))
 
     expect(screen.queryByTestId(`floor-label-${floor.id}`)).not.toBeInTheDocument()
     expect(screen.queryByTestId(`room-label-${room.id}`)).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('checkbox', { name: 'Room/Floor' }))
+    await user.click(screen.getByRole('checkbox', { name: 'Labels' }))
 
     expect(screen.getByTestId(`floor-label-${floor.id}`)).toBeInTheDocument()
     expect(screen.getByTestId(`room-label-${room.id}`)).toBeInTheDocument()
