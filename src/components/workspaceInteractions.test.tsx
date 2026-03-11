@@ -762,17 +762,16 @@ describe('workspace interactions', () => {
 
     renderEditor({ draft })
 
-    const wallHit = screen.getByTestId(`wall-hit-${firstWall.id}`)
     expect(screen.getByTestId(`wall-label-${firstWall.id}`)).toBeInTheDocument()
 
     await user.click(screen.getByRole('checkbox', { name: 'Wall Lengths' }))
 
     expect(screen.queryByTestId(`wall-label-${firstWall.id}`)).not.toBeInTheDocument()
 
-    fireEvent.mouseEnter(wallHit)
-    expect(screen.getByTestId(`wall-label-${firstWall.id}`)).toBeInTheDocument()
+    fireEvent.mouseEnter(screen.getByTestId(`wall-hit-${firstWall.id}`))
+    await waitFor(() => expect(screen.getByTestId(`wall-label-${firstWall.id}`)).toBeInTheDocument())
 
-    fireEvent.mouseLeave(wallHit)
+    fireEvent.mouseLeave(screen.getByTestId(`wall-hit-${firstWall.id}`))
     await waitFor(() => expect(screen.queryByTestId(`wall-label-${firstWall.id}`)).not.toBeInTheDocument())
 
     await user.click(screen.getByRole('checkbox', { name: 'Wall Lengths' }))
