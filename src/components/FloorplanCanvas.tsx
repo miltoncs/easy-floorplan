@@ -132,6 +132,7 @@ type SuggestionPreview = {
 type PlacedSuggestionPreview = SuggestionPreview & {
   actionPoint: Point
   actionRect: CanvasRect
+  actionScreenPoint: ScreenPoint
 }
 
 type AnnotationKind = 'floor' | 'room' | 'furniture' | 'wall'
@@ -186,6 +187,8 @@ const WHEEL_ZOOM_MULTIPLIER = 1.02
 const WHEEL_GESTURE_IDLE_MS = 160
 const WHEEL_GESTURE_ANCHOR_TOLERANCE_PX = 48
 const BUTTON_ZOOM_MULTIPLIER = 1.03
+const SUGGESTION_ACTION_WIDTH_PX = 82
+const SUGGESTION_ACTION_HEIGHT_PX = 34
 
 export function FloorplanCanvas() {
   const {
@@ -216,10 +219,13 @@ export function FloorplanCanvas() {
   const [dragViewBounds, setDragViewBounds] = useState<Bounds | null>(null)
   const [selectionBox, setSelectionBox] = useState<CanvasRect | null>(null)
   const [inlineWallEditor, setInlineWallEditor] = useState<InlineWallEditorState | null>(null)
+  const [viewRotationQuarterTurns, setViewRotationQuarterTurns] = useState(0)
   const canvasAspectRatio =
     canvasSize.width > 0 && canvasSize.height > 0 ? canvasSize.width / canvasSize.height : undefined
   const framingBounds = dragViewBounds ?? ui.camera.frameBounds
-  const viewBox = getViewBox(framingBounds, ui.camera.zoom, ui.camera.offset, canvasAspectRatio)
+  const rotatedViewBounds = rotateBoundsForView(framingBounds, viewRotationQuarterTurns)
+  const viewBox = getViewBox(rotatedViewBounds, ui.camera.zoom, ui.camera.offset, canvasAspectRatio)
+  const viewRotationTransform = getViewRotationTransform(viewBox, viewRotationQuarterTurns)
   const labelScale = draft.labelFontSize / DEFAULT_LABEL_FONT_SIZE
   const showSimplifiedDragPreview = Boolean(
     dragState?.moved && (dragState.kind === 'room' || dragState.kind === 'wall'),
@@ -242,6 +248,7 @@ export function FloorplanCanvas() {
             shapeSuggestions.map((suggestion) => buildSuggestionPreview(selectedRoom, suggestion)),
             viewBox,
             canvasMetrics,
+            viewRotationQuarterTurns,
             [
               expandRect(canvasToolbarRect, 0.8, 0.8),
               expandRect(canvasModeSwitchRect, 0.4, 0.4),
@@ -258,6 +265,7 @@ export function FloorplanCanvas() {
       selectedRoom,
       shapeSuggestions,
       showSimplifiedDragPreview,
+      viewRotationQuarterTurns,
       viewBox,
     ],
   )
@@ -267,7 +275,11 @@ export function FloorplanCanvas() {
       expandRect(svgRectToScreenRect(canvasModeSwitchRect, viewBox, canvasMetrics), 12, 12),
       expandRect(svgRectToScreenRect(canvasLegendRect, viewBox, canvasMetrics), 12, 12),
       ...suggestedPreviews.map((preview) =>
-        expandRect(svgRectToScreenRect(preview.actionRect, viewBox, canvasMetrics), 12, 12),
+        expandRect(
+          makeCenteredRect(preview.actionScreenPoint.x, preview.actionScreenPoint.y, SUGGESTION_ACTION_WIDTH_PX, SUGGESTION_ACTION_HEIGHT_PX),
+          12,
+          12,
+        ),
       ),
     ],
     [canvasLegendRect, canvasMetrics, canvasModeSwitchRect, canvasToolbarRect, suggestedPreviews, viewBox],
@@ -296,6 +308,7 @@ export function FloorplanCanvas() {
             selectionTargets: ui.selectionTargets,
             editingWallSegmentId: inlineWallEditor?.segmentId ?? null,
             previousCandidateIndices: annotationPlacementRef.current,
+            viewRotationQuarterTurns,
           }),
     [
       activeFloor?.id,
@@ -316,6 +329,7 @@ export function FloorplanCanvas() {
       ui.focusedTarget,
       ui.hoveredTarget,
       ui.selectionTargets,
+      viewRotationQuarterTurns,
       viewBox,
       visibleFloors,
     ],
@@ -331,6 +345,7 @@ export function FloorplanCanvas() {
         hoveredTarget: ui.hoveredTarget,
         viewBox,
         canvasMetrics,
+        viewRotationQuarterTurns,
       })
   const selectableTargets = showSimplifiedDragPreview
     ? []
@@ -342,6 +357,7 @@ export function FloorplanCanvas() {
         selectedRoomId: draft.selectedRoomId,
         viewBox,
         canvasMetrics,
+        viewRotationQuarterTurns,
         showFurniture: draft.editorMode === 'furniture',
       })
   const canvasTarget: CanvasTarget = {
@@ -358,19 +374,22 @@ export function FloorplanCanvas() {
     const rect = svgRef.current.getBoundingClientRect()
     const pointerRatioX = (clientX - rect.left) / rect.width
     const pointerRatioY = (clientY - rect.top) / rect.height
-    const currentViewX = viewBox.x + pointerRatioX * viewBox.width
-    const currentViewY = viewBox.y + pointerRatioY * viewBox.height
+    const currentViewPoint = screenToBaseSvgPoint(clientX, clientY, rect, viewBox, viewRotationQuarterTurns)
     const nextZoom = deltaY > 0 ? ui.camera.zoom / WHEEL_ZOOM_MULTIPLIER : ui.camera.zoom * WHEEL_ZOOM_MULTIPLIER
     const clampedZoom = Math.max(0.45, Math.min(3.5, nextZoom))
-    const nextViewBox = getViewBox(viewBounds, clampedZoom, { x: 0, y: 0 }, canvasAspectRatio)
-
-    actions.setCamera({
-      zoom: clampedZoom,
-      offset: {
-        x: currentViewX - pointerRatioX * nextViewBox.width - nextViewBox.x,
-        y: currentViewY - pointerRatioY * nextViewBox.height - nextViewBox.y,
-      },
-    })
+    actions.setCamera(
+      getCameraForScreenAnchor(
+        viewBounds,
+        clampedZoom,
+        {
+          x: pointerRatioX,
+          y: pointerRatioY,
+        },
+        currentViewPoint,
+        canvasAspectRatio,
+        viewRotationQuarterTurns,
+      ),
+    )
   })
 
   const getWheelZoomAnchor = useEffectEvent((clientX: number, clientY: number) => {
@@ -579,10 +598,15 @@ export function FloorplanCanvas() {
     }
 
     const rect = svgRef.current.getBoundingClientRect()
-    const scaleX = viewBox.width / rect.width
-    const scaleY = viewBox.height / rect.height
-    const deltaX = (event.clientX - dragRef.current.clientX) * scaleX
-    const deltaY = (event.clientY - dragRef.current.clientY) * scaleY
+    const delta = screenDeltaToBaseSvgDelta(
+      event.clientX - dragRef.current.clientX,
+      event.clientY - dragRef.current.clientY,
+      rect,
+      viewBox,
+      viewRotationQuarterTurns,
+    )
+    const deltaX = delta.x
+    const deltaY = delta.y
     const moved = Math.abs(event.clientX - dragRef.current.clientX) > 4 || Math.abs(event.clientY - dragRef.current.clientY) > 4
     const activeDrag = dragRef.current
 
@@ -959,6 +983,7 @@ export function FloorplanCanvas() {
           />
         ) : null}
 
+        <g transform={viewRotationTransform}>
         {!showSimplifiedDragPreview ? (
           <g className="origin-crosshair">
             <line x1={-1} x2={1} y1={0} y2={0} />
@@ -1149,6 +1174,7 @@ export function FloorplanCanvas() {
                 </g>
               ))
           : null}
+        </g>
       </svg>
 
       {selectionBox ? (
@@ -1195,75 +1221,92 @@ export function FloorplanCanvas() {
 
       {!showSimplifiedDragPreview ? (
         <div aria-label="Canvas view controls" className="canvas-toolbar">
-        <div className="canvas-toolbar-row">
-          <p className="canvas-toolbar-kicker">View</p>
-          <button
-            className="ghost-button small"
-            onClick={() =>
-              actions.setCamera({
-                zoom: ui.camera.zoom / BUTTON_ZOOM_MULTIPLIER,
-                offset: ui.camera.offset,
-              })
-            }
-            type="button"
-          >
-            -
-          </button>
-          <span className="toolbar-pill">{Math.round(ui.camera.zoom * 100)}%</span>
-          <button
-            className="ghost-button small"
-            onClick={() =>
-              actions.setCamera({
-                zoom: ui.camera.zoom * BUTTON_ZOOM_MULTIPLIER,
-                offset: ui.camera.offset,
-              })
-            }
-            type="button"
-          >
-            +
-          </button>
-          <button className="ghost-button small" onClick={() => actions.resetCamera()} type="button">
-            Fit
-          </button>
-        </div>
-        <div className="canvas-toolbar-row canvas-toolbar-row--toggles">
-          <label className="toggle">
-            <input checked={draft.showGrid} type="checkbox" onChange={(event) => actions.toggleGrid(event.target.checked)} />
-            <span>Grid</span>
-          </label>
-          <label className="toggle">
-            <input
-              checked={draft.showInferred}
-              type="checkbox"
-              onChange={(event) => actions.toggleInferred(event.target.checked)}
-            />
-            <span>Inference</span>
-          </label>
-          <label className="toggle">
-            <input
-              checked={draft.showRoomFloorLabels}
-              type="checkbox"
-              onChange={(event) => actions.toggleRoomFloorLabels(event.target.checked)}
-            />
-            <span>Room/Floor</span>
-          </label>
-          <label className="toggle">
-            <input
-              checked={draft.showWallLabels}
-              type="checkbox"
-              onChange={(event) => actions.toggleWallLabels(event.target.checked)}
-            />
-            <span>Distances</span>
-          </label>
-          <label className="toggle">
-            <input
-              checked={draft.showAngleLabels}
-              type="checkbox"
-              onChange={(event) => actions.toggleAngleLabels(event.target.checked)}
-            />
-            <span>Angles</span>
-          </label>
-        </div>
+          <div className="canvas-toolbar-group canvas-toolbar-group--toggles">
+            <label className="toggle">
+              <input checked={draft.showGrid} type="checkbox" onChange={(event) => actions.toggleGrid(event.target.checked)} />
+              <span>Grid</span>
+            </label>
+            <label className="toggle">
+              <input
+                checked={draft.showInferred}
+                type="checkbox"
+                onChange={(event) => actions.toggleInferred(event.target.checked)}
+              />
+              <span>Inference</span>
+            </label>
+            <label className="toggle">
+              <input
+                checked={draft.showRoomFloorLabels}
+                type="checkbox"
+                onChange={(event) => actions.toggleRoomFloorLabels(event.target.checked)}
+              />
+              <span>Room/Floor</span>
+            </label>
+            <label className="toggle">
+              <input
+                checked={draft.showWallLabels}
+                type="checkbox"
+                onChange={(event) => actions.toggleWallLabels(event.target.checked)}
+              />
+              <span>Distances</span>
+            </label>
+            <label className="toggle">
+              <input
+                checked={draft.showAngleLabels}
+                type="checkbox"
+                onChange={(event) => actions.toggleAngleLabels(event.target.checked)}
+              />
+              <span>Angles</span>
+            </label>
+          </div>
+          <div className="canvas-toolbar-group canvas-toolbar-group--zoom">
+            <button
+              aria-label="Rotate view counterclockwise"
+              className="ghost-button small icon-button canvas-toolbar-icon-button"
+              onClick={() => setViewRotationQuarterTurns((current) => normalizeQuarterTurns(current - 1))}
+              title="Rotate view counterclockwise"
+              type="button"
+            >
+              <RotateViewIcon direction="counterclockwise" />
+            </button>
+            <button
+              aria-label="Rotate view clockwise"
+              className="ghost-button small icon-button canvas-toolbar-icon-button"
+              onClick={() => setViewRotationQuarterTurns((current) => normalizeQuarterTurns(current + 1))}
+              title="Rotate view clockwise"
+              type="button"
+            >
+              <RotateViewIcon direction="clockwise" />
+            </button>
+            <button
+              className="ghost-button small"
+              onClick={() =>
+                actions.setCamera({
+                  zoom: ui.camera.zoom / BUTTON_ZOOM_MULTIPLIER,
+                  offset: ui.camera.offset,
+                })
+              }
+              type="button"
+            >
+              -
+            </button>
+            <span className="toolbar-pill">{Math.round(ui.camera.zoom * 100)}%</span>
+            <button
+              className="ghost-button small"
+              onClick={() =>
+                actions.setCamera({
+                  zoom: ui.camera.zoom * BUTTON_ZOOM_MULTIPLIER,
+                  offset: ui.camera.offset,
+                })
+              }
+              type="button"
+            >
+              +
+            </button>
+            <button className="ghost-button small" onClick={() => actions.resetCamera()} type="button">
+              Fit
+            </button>
+          </div>
         </div>
       ) : null}
 
@@ -1421,7 +1464,7 @@ export function FloorplanCanvas() {
       {suggestedPreviews.length > 0 ? (
         <div aria-label="Canvas inference suggestions" className="canvas-suggestion-layer">
           {suggestedPreviews.map((preview) => {
-            const position = toCanvasPercentages(preview.actionPoint, viewBox)
+            const position = toCanvasPercentages(preview.actionPoint, viewBox, viewRotationQuarterTurns)
 
             return (
               <div
@@ -2064,6 +2107,7 @@ function buildSelectableCanvasTargets({
   selectedRoomId,
   viewBox,
   canvasMetrics,
+  viewRotationQuarterTurns,
   showFurniture,
 }: {
   activeStructureId?: string
@@ -2073,6 +2117,7 @@ function buildSelectableCanvasTargets({
   selectedRoomId: string | null
   viewBox: { x: number; y: number; width: number; height: number }
   canvasMetrics: CanvasMetrics
+  viewRotationQuarterTurns: number
   showFurniture: boolean
 }): SelectableCanvasTarget[] {
   if (!activeStructureId) {
@@ -2091,7 +2136,7 @@ function buildSelectableCanvasTargets({
           floorId: floor.id,
           roomId: room.id,
         },
-        rect: getScreenRectFromWorldBounds(geometry.bounds, viewBox, canvasMetrics),
+        rect: getScreenRectFromWorldBounds(geometry.bounds, viewBox, canvasMetrics, viewRotationQuarterTurns),
       })
 
       if (!showFurniture) {
@@ -2116,6 +2161,7 @@ function buildSelectableCanvasTargets({
             },
             viewBox,
             canvasMetrics,
+            viewRotationQuarterTurns,
           ),
         })
       })
@@ -2124,8 +2170,8 @@ function buildSelectableCanvasTargets({
 
   if (selectedRoomGeometry && selectedRoomId) {
     selectedRoomGeometry.segments.forEach((segment) => {
-      const start = worldToScreenPoint(segment.start, viewBox, canvasMetrics)
-      const end = worldToScreenPoint(segment.end, viewBox, canvasMetrics)
+      const start = worldToScreenPoint(segment.start, viewBox, canvasMetrics, viewRotationQuarterTurns)
+      const end = worldToScreenPoint(segment.end, viewBox, canvasMetrics, viewRotationQuarterTurns)
       targets.push({
         target: {
           kind: 'wall',
@@ -2157,6 +2203,35 @@ function shouldIgnoreWheelZoom(target: EventTarget | null) {
   }
 
   return Boolean(target.closest('input, textarea, select, .canvas-toolbar, .canvas-key, .canvas-suggestion-layer'))
+}
+
+function RotateViewIcon({ direction }: { direction: 'clockwise' | 'counterclockwise' }) {
+  return (
+    <svg
+      aria-hidden="true"
+      className="canvas-toolbar-icon"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="1.4"
+      viewBox="0 0 16 16"
+    >
+      {direction === 'counterclockwise' ? (
+        <>
+          <path d="M8 2.75a5.25 5.25 0 1 0 4.56 2.65" />
+          <path d="M8 2.75H4.75" />
+          <path d="M4.75 2.75v3.25" />
+        </>
+      ) : (
+        <>
+          <path d="M8 2.75a5.25 5.25 0 1 1-4.56 2.65" />
+          <path d="M8 2.75h3.25" />
+          <path d="M11.25 2.75v3.25" />
+        </>
+      )}
+    </svg>
+  )
 }
 
 function hasSuggestedSegments(
@@ -2212,12 +2287,16 @@ function buildSuggestionPreview(room: Room, suggestion: RoomSuggestion & { segme
   }
 }
 
-function toCanvasPercentages(point: Point, viewBox: { x: number; y: number; width: number; height: number }) {
-  const svgY = -point.y
+function toCanvasPercentages(
+  point: Point,
+  viewBox: { x: number; y: number; width: number; height: number },
+  viewRotationQuarterTurns = 0,
+) {
+  const rotatedPoint = rotateSvgPoint({ x: point.x, y: -point.y }, getViewBoxCenterPoint(viewBox), viewRotationQuarterTurns)
 
   return {
-    left: ((point.x - viewBox.x) / viewBox.width) * 100,
-    top: ((svgY - viewBox.y) / viewBox.height) * 100,
+    left: ((rotatedPoint.x - viewBox.x) / viewBox.width) * 100,
+    top: ((rotatedPoint.y - viewBox.y) / viewBox.height) * 100,
   }
 }
 
@@ -2239,8 +2318,8 @@ function getCanvasToolbarRect(
 ) {
   const right = 16 * metrics.unitX
   const top = 16 * metrics.unitY
-  const width = Math.min(352, Math.max(250, metrics.widthPx * 0.34)) * metrics.unitX
-  const height = (metrics.widthPx < 760 ? 102 : 62) * metrics.unitY
+  const width = Math.min(420, Math.max(320, metrics.widthPx * 0.4)) * metrics.unitX
+  const height = (metrics.widthPx < 760 ? 116 : 98) * metrics.unitY
   const maxX = viewBox.x + viewBox.width - right
   const minY = viewBox.y + top
 
@@ -2331,10 +2410,12 @@ function getSuggestionCandidateAngles(clusterIndex: number) {
 }
 
 function estimateSuggestionActionRect(point: Point, metrics: CanvasMetrics) {
-  const widthPx = 82
-  const heightPx = 34
-
-  return makeCenteredRect(point.x, -point.y, widthPx * metrics.unitX, heightPx * metrics.unitY)
+  return makeCenteredRect(
+    point.x,
+    -point.y,
+    SUGGESTION_ACTION_WIDTH_PX * metrics.unitX,
+    SUGGESTION_ACTION_HEIGHT_PX * metrics.unitY,
+  )
 }
 
 function clampSuggestionActionPoint(
@@ -2358,6 +2439,7 @@ function placeSuggestionPreviews(
   previews: SuggestionPreview[],
   viewBox: { x: number; y: number; width: number; height: number },
   metrics: CanvasMetrics,
+  viewRotationQuarterTurns: number,
   reservedRects: CanvasRect[],
 ): PlacedSuggestionPreview[] {
   const occupied = [...reservedRects]
@@ -2379,7 +2461,7 @@ function placeSuggestionPreviews(
     .map((preview, originalIndex) => ({
       preview,
       originalIndex,
-      anchorScreenPoint: worldToScreenPoint(preview.anchorPoint, viewBox, metrics),
+      anchorScreenPoint: worldToScreenPoint(preview.anchorPoint, viewBox, metrics, viewRotationQuarterTurns),
     }))
     .sort(
       (left, right) =>
@@ -2404,7 +2486,7 @@ function placeSuggestionPreviews(
           metrics,
         )
         const actionRect = estimateSuggestionActionRect(actionPoint, metrics)
-        const actionScreenPoint = worldToScreenPoint(actionPoint, viewBox, metrics)
+        const actionScreenPoint = worldToScreenPoint(actionPoint, viewBox, metrics, viewRotationQuarterTurns)
         const overlap = occupied.reduce((sum, rect) => sum + overlapArea(actionRect, rect), 0)
         const crowdingPenalty = placedReferences.reduce((sum, reference) => {
           const distance = getScreenPointDistance(actionScreenPoint, reference.actionScreenPoint)
@@ -2453,6 +2535,7 @@ function placeSuggestionPreviews(
       ...preview,
       actionPoint: selectedCandidate.actionPoint,
       actionRect: selectedCandidate.actionRect,
+      actionScreenPoint: selectedCandidate.actionScreenPoint,
     })
   })
 
@@ -2460,7 +2543,176 @@ function placeSuggestionPreviews(
     ...preview,
     actionPoint: preview.anchorPoint,
     actionRect: estimateSuggestionActionRect(preview.anchorPoint, metrics),
+    actionScreenPoint: worldToScreenPoint(preview.anchorPoint, viewBox, metrics, viewRotationQuarterTurns),
   })
+}
+
+function normalizeQuarterTurns(turns: number) {
+  const normalized = turns % 4
+  return normalized < 0 ? normalized + 4 : normalized
+}
+
+function rotateBoundsForView(bounds: Bounds, viewRotationQuarterTurns: number): Bounds {
+  if (normalizeQuarterTurns(viewRotationQuarterTurns) % 2 === 0) {
+    return bounds
+  }
+
+  const centerX = (bounds.minX + bounds.maxX) / 2
+  const centerY = (bounds.minY + bounds.maxY) / 2
+  const width = bounds.maxX - bounds.minX
+  const height = bounds.maxY - bounds.minY
+
+  return {
+    minX: centerX - height / 2,
+    maxX: centerX + height / 2,
+    minY: centerY - width / 2,
+    maxY: centerY + width / 2,
+  }
+}
+
+function getViewBoxCenterPoint(viewBox: { x: number; y: number; width: number; height: number }) {
+  return {
+    x: viewBox.x + viewBox.width / 2,
+    y: viewBox.y + viewBox.height / 2,
+  }
+}
+
+function getViewRotationTransform(
+  viewBox: { x: number; y: number; width: number; height: number },
+  viewRotationQuarterTurns: number,
+) {
+  const degrees = normalizeQuarterTurns(viewRotationQuarterTurns) * 90
+
+  if (degrees === 0) {
+    return undefined
+  }
+
+  const center = getViewBoxCenterPoint(viewBox)
+  return `rotate(${degrees} ${center.x} ${center.y})`
+}
+
+function rotateSvgPoint(
+  point: { x: number; y: number },
+  center: { x: number; y: number },
+  viewRotationQuarterTurns: number,
+) {
+  const dx = point.x - center.x
+  const dy = point.y - center.y
+
+  switch (normalizeQuarterTurns(viewRotationQuarterTurns)) {
+    case 1:
+      return {
+        x: center.x - dy,
+        y: center.y + dx,
+      }
+    case 2:
+      return {
+        x: center.x - dx,
+        y: center.y - dy,
+      }
+    case 3:
+      return {
+        x: center.x + dy,
+        y: center.y - dx,
+      }
+    default:
+      return point
+  }
+}
+
+function rotateSvgVector(
+  vector: { x: number; y: number },
+  viewRotationQuarterTurns: number,
+) {
+  switch (normalizeQuarterTurns(viewRotationQuarterTurns)) {
+    case 1:
+      return {
+        x: -vector.y,
+        y: vector.x,
+      }
+    case 2:
+      return {
+        x: -vector.x,
+        y: -vector.y,
+      }
+    case 3:
+      return {
+        x: vector.y,
+        y: -vector.x,
+      }
+    default:
+      return vector
+  }
+}
+
+function screenToSvgPoint(
+  clientX: number,
+  clientY: number,
+  rect: DOMRect,
+  viewBox: { x: number; y: number; width: number; height: number },
+) {
+  return {
+    x: viewBox.x + ((clientX - rect.left) / rect.width) * viewBox.width,
+    y: viewBox.y + ((clientY - rect.top) / rect.height) * viewBox.height,
+  }
+}
+
+function screenToBaseSvgPoint(
+  clientX: number,
+  clientY: number,
+  rect: DOMRect,
+  viewBox: { x: number; y: number; width: number; height: number },
+  viewRotationQuarterTurns: number,
+) {
+  return rotateSvgPoint(
+    screenToSvgPoint(clientX, clientY, rect, viewBox),
+    getViewBoxCenterPoint(viewBox),
+    -viewRotationQuarterTurns,
+  )
+}
+
+function screenDeltaToBaseSvgDelta(
+  deltaClientX: number,
+  deltaClientY: number,
+  rect: DOMRect,
+  viewBox: { x: number; y: number; width: number; height: number },
+  viewRotationQuarterTurns: number,
+) {
+  return rotateSvgVector(
+    {
+      x: deltaClientX * (viewBox.width / rect.width),
+      y: deltaClientY * (viewBox.height / rect.height),
+    },
+    -viewRotationQuarterTurns,
+  )
+}
+
+function getCameraForScreenAnchor(
+  bounds: Bounds,
+  zoom: number,
+  anchorRatio: { x: number; y: number },
+  anchorPoint: { x: number; y: number },
+  aspectRatio?: number,
+  viewRotationQuarterTurns = 0,
+) {
+  const rotatedBounds = rotateBoundsForView(bounds, viewRotationQuarterTurns)
+  const baseViewBox = getViewBox(rotatedBounds, zoom, { x: 0, y: 0 }, aspectRatio)
+  const anchoredPointWithoutOffset = rotateSvgPoint(
+    {
+      x: baseViewBox.x + anchorRatio.x * baseViewBox.width,
+      y: baseViewBox.y + anchorRatio.y * baseViewBox.height,
+    },
+    getViewBoxCenterPoint(baseViewBox),
+    -viewRotationQuarterTurns,
+  )
+
+  return {
+    zoom,
+    offset: {
+      x: anchorPoint.x - anchoredPointWithoutOffset.x,
+      y: anchorPoint.y - anchoredPointWithoutOffset.y,
+    },
+  }
 }
 
 function countGraphemes(text: string) {
@@ -2482,23 +2734,33 @@ function worldToScreenPoint(
   point: Point,
   viewBox: { x: number; y: number; width: number; height: number },
   metrics: CanvasMetrics,
+  viewRotationQuarterTurns = 0,
 ): ScreenPoint {
-  return svgToScreenPoint({ x: point.x, y: -point.y }, viewBox, metrics)
+  return svgToScreenPoint(
+    rotateSvgPoint({ x: point.x, y: -point.y }, getViewBoxCenterPoint(viewBox), viewRotationQuarterTurns),
+    viewBox,
+    metrics,
+  )
 }
 
 function getScreenRectFromWorldBounds(
   bounds: { minX: number; minY: number; maxX: number; maxY: number },
   viewBox: { x: number; y: number; width: number; height: number },
   metrics: CanvasMetrics,
+  viewRotationQuarterTurns = 0,
 ) {
-  const topLeft = worldToScreenPoint({ x: bounds.minX, y: bounds.maxY }, viewBox, metrics)
-  const bottomRight = worldToScreenPoint({ x: bounds.maxX, y: bounds.minY }, viewBox, metrics)
+  const corners = [
+    { x: bounds.minX, y: bounds.maxY },
+    { x: bounds.maxX, y: bounds.maxY },
+    { x: bounds.maxX, y: bounds.minY },
+    { x: bounds.minX, y: bounds.minY },
+  ].map((point) => worldToScreenPoint(point, viewBox, metrics, viewRotationQuarterTurns))
 
   return {
-    minX: Math.min(topLeft.x, bottomRight.x),
-    maxX: Math.max(topLeft.x, bottomRight.x),
-    minY: Math.min(topLeft.y, bottomRight.y),
-    maxY: Math.max(topLeft.y, bottomRight.y),
+    minX: Math.min(...corners.map((point) => point.x)),
+    maxX: Math.max(...corners.map((point) => point.x)),
+    minY: Math.min(...corners.map((point) => point.y)),
+    maxY: Math.max(...corners.map((point) => point.y)),
   }
 }
 
@@ -2666,6 +2928,7 @@ function buildCanvasAnnotations({
   selectionTargets,
   editingWallSegmentId,
   previousCandidateIndices,
+  viewRotationQuarterTurns,
 }: {
   canvasMetrics: CanvasMetrics
   viewBox: { x: number; y: number; width: number; height: number }
@@ -2686,6 +2949,7 @@ function buildCanvasAnnotations({
   selectionTargets: CanvasTarget[]
   editingWallSegmentId: string | null
   previousCandidateIndices: Record<string, number>
+  viewRotationQuarterTurns: number
 }): PlacedCanvasAnnotation[] {
   const descriptors: CanvasAnnotation[] = []
   const roomOffsets: ScreenPoint[] = [
@@ -2735,7 +2999,12 @@ function buildCanvasAnnotations({
     }
 
     const floorBounds = computeFloorBounds(floor)
-    const floorAnchor = worldToScreenPoint({ x: floorBounds.minX + 1, y: floorBounds.maxY + 1.6 }, viewBox, canvasMetrics)
+    const floorAnchor = worldToScreenPoint(
+      { x: floorBounds.minX + 1, y: floorBounds.maxY + 1.6 },
+      viewBox,
+      canvasMetrics,
+      viewRotationQuarterTurns,
+    )
     const floorSize = estimateAnnotationSize('floor', floor.name, labelFontSize)
     const floorTarget: CanvasTarget = {
       kind: 'floor',
@@ -2759,7 +3028,7 @@ function buildCanvasAnnotations({
     }
 
     floor.rooms.forEach((room) => {
-      const roomAnchor = worldToScreenPoint(getRoomLabelPoint(room), viewBox, canvasMetrics)
+      const roomAnchor = worldToScreenPoint(getRoomLabelPoint(room), viewBox, canvasMetrics, viewRotationQuarterTurns)
       const roomSize = estimateAnnotationSize('room', room.name, labelFontSize)
       const roomTarget: CanvasTarget = {
         kind: 'room',
@@ -2794,6 +3063,7 @@ function buildCanvasAnnotations({
           { x: item.x + item.width / 2, y: item.y - item.depth / 2 },
           viewBox,
           canvasMetrics,
+          viewRotationQuarterTurns,
         )
         const furnitureSize = estimateAnnotationSize('furniture', item.name, labelFontSize)
         const furnitureTarget: CanvasTarget = {
@@ -2822,9 +3092,9 @@ function buildCanvasAnnotations({
 
   if (showWallLabels && selectedRoomGeometry && selectedRoom && activeStructureId && selectedRoomId) {
     selectedRoomGeometry.segments.forEach((segment) => {
-      const midpointScreen = worldToScreenPoint(midpoint(segment.start, segment.end), viewBox, canvasMetrics)
-      const start = worldToScreenPoint(segment.start, viewBox, canvasMetrics)
-      const end = worldToScreenPoint(segment.end, viewBox, canvasMetrics)
+      const midpointScreen = worldToScreenPoint(midpoint(segment.start, segment.end), viewBox, canvasMetrics, viewRotationQuarterTurns)
+      const start = worldToScreenPoint(segment.start, viewBox, canvasMetrics, viewRotationQuarterTurns)
+      const end = worldToScreenPoint(segment.end, viewBox, canvasMetrics, viewRotationQuarterTurns)
       const wallTarget: CanvasTarget = {
         kind: 'wall',
         structureId: activeStructureId,
@@ -2869,6 +3139,7 @@ function buildCornerHoverOverlay({
   segmentId,
   viewBox,
   canvasMetrics,
+  viewRotationQuarterTurns,
 }: {
   activeStructureId?: string
   activeFloorId: string
@@ -2877,6 +3148,7 @@ function buildCornerHoverOverlay({
   segmentId: string
   viewBox: { x: number; y: number; width: number; height: number }
   canvasMetrics: CanvasMetrics
+  viewRotationQuarterTurns: number
 }): HoverCornerOverlay | null {
   if (!activeStructureId || !selectedRoom || !selectedRoomGeometry) {
     return null
@@ -2894,10 +3166,10 @@ function buildCornerHoverOverlay({
   const nextSegment = corner.isExit
     ? null
     : selectedRoomGeometry.segments[cornerIndex + 1] ?? (selectedRoomGeometry.closed ? selectedRoomGeometry.segments[0] : null)
-  const point = worldToScreenPoint(corner.point, viewBox, canvasMetrics)
-  const incomingStart = worldToScreenPoint(previousSegment.start, viewBox, canvasMetrics)
+  const point = worldToScreenPoint(corner.point, viewBox, canvasMetrics, viewRotationQuarterTurns)
+  const incomingStart = worldToScreenPoint(previousSegment.start, viewBox, canvasMetrics, viewRotationQuarterTurns)
   const outgoingEnd = nextSegment
-    ? worldToScreenPoint(nextSegment.end, viewBox, canvasMetrics)
+    ? worldToScreenPoint(nextSegment.end, viewBox, canvasMetrics, viewRotationQuarterTurns)
     : worldToScreenPoint(
         addPolar(
           corner.point,
@@ -2906,6 +3178,7 @@ function buildCornerHoverOverlay({
         ),
         viewBox,
         canvasMetrics,
+        viewRotationQuarterTurns,
       )
   const hoverArc = buildCornerHoverArc({
     corner: point,
@@ -2936,6 +3209,7 @@ function getVisibleCornerOverlays({
   hoveredTarget,
   viewBox,
   canvasMetrics,
+  viewRotationQuarterTurns,
 }: {
   activeStructureId?: string
   activeFloorId: string
@@ -2945,6 +3219,7 @@ function getVisibleCornerOverlays({
   hoveredTarget: CanvasTarget | null
   viewBox: { x: number; y: number; width: number; height: number }
   canvasMetrics: CanvasMetrics
+  viewRotationQuarterTurns: number
 }) {
   if (!activeStructureId || !selectedRoom || !selectedRoomGeometry) {
     return []
@@ -2961,6 +3236,7 @@ function getVisibleCornerOverlays({
           segmentId: corner.segmentId,
           viewBox,
           canvasMetrics,
+          viewRotationQuarterTurns,
         }),
       )
       .filter((overlay): overlay is HoverCornerOverlay => Boolean(overlay))
@@ -2983,6 +3259,7 @@ function getVisibleCornerOverlays({
     segmentId: hoveredTarget.segmentId,
     viewBox,
     canvasMetrics,
+    viewRotationQuarterTurns,
   })
 
   return overlay ? [overlay] : []

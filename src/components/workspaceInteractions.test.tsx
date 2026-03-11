@@ -435,6 +435,37 @@ describe('workspace interactions', () => {
     expect(finalCenter.y).toBeCloseTo(initialCenter.y, 5)
   })
 
+  it('rotates the canvas view clockwise and back in quarter turns', async () => {
+    const user = userEvent.setup()
+    const draft = createSeedState()
+    const room = draft.structures[0].floors[0].rooms[0]
+
+    renderEditor({ draft })
+
+    const svg = screen.getByLabelText('Interactive floorplan canvas')
+    mockCanvasRect(svg)
+    fireEvent(window, new Event('resize'))
+
+    const roomLabel = screen.getByTestId(`room-label-${room.id}`)
+    const initialPosition = readAbsolutePosition(roomLabel)
+
+    await user.click(screen.getByRole('button', { name: 'Rotate view clockwise' }))
+
+    await waitFor(() => {
+      const rotatedPosition = readAbsolutePosition(screen.getByTestId(`room-label-${room.id}`))
+      expect(rotatedPosition.left).not.toBeCloseTo(initialPosition.left, 1)
+      expect(rotatedPosition.top).not.toBeCloseTo(initialPosition.top, 1)
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Rotate view counterclockwise' }))
+
+    await waitFor(() => {
+      const resetPosition = readAbsolutePosition(screen.getByTestId(`room-label-${room.id}`))
+      expect(resetPosition.left).toBeCloseTo(initialPosition.left, 1)
+      expect(resetPosition.top).toBeCloseTo(initialPosition.top, 1)
+    })
+  })
+
   it('supports wheel zoom while hovering a room label', async () => {
     const draft = createSeedState()
     const room = draft.structures[0].floors[0].rooms[0]
@@ -1041,6 +1072,14 @@ function getWallLinePosition(segmentId: string) {
     x2: Number(line.getAttribute('x2')),
     y1: Number(line.getAttribute('y1')),
     y2: Number(line.getAttribute('y2')),
+  }
+}
+
+function readAbsolutePosition(element: HTMLElement) {
+  const style = element.getAttribute('style') ?? ''
+  return {
+    left: Number.parseFloat(style.match(/left:\s*([\d.]+)px/)?.[1] ?? '0'),
+    top: Number.parseFloat(style.match(/top:\s*([\d.]+)px/)?.[1] ?? '0'),
   }
 }
 

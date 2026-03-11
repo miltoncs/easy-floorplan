@@ -628,9 +628,12 @@
   right: 1rem;
   z-index: 5;
   display: grid;
-  gap: 0.45rem;
-  max-width: min(22rem, calc(100% - 2rem));
-  padding: 0.7rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 0.7rem 0.85rem;
+  width: min(26rem, calc(100% - 2rem));
+  max-width: min(26rem, calc(100% - 2rem));
+  padding: 0.76rem 0.82rem;
   border-radius: var(--radius-card);
   background: rgba(255, 255, 255, 0.94);
   border: 1px solid rgba(17, 17, 17, 0.08);
@@ -638,32 +641,39 @@
   backdrop-filter: blur(18px);
 }
 
-.canvas-toolbar-row {
+.canvas-toolbar-group {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: flex-end;
   gap: 0.45rem;
 }
 
-.canvas-toolbar-row--toggles {
-  justify-content: flex-end;
+.canvas-toolbar-group--toggles {
+  justify-content: flex-start;
+  align-content: flex-start;
 }
 
-.canvas-toolbar-kicker {
-  margin: 0;
-  margin-right: auto;
-  color: var(--ink-muted);
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 0.66rem;
-  letter-spacing: 0.11em;
-  text-transform: uppercase;
+.canvas-toolbar-group--zoom {
+  justify-content: flex-end;
+  align-self: start;
+  flex-wrap: nowrap;
 }
 
 .canvas-toolbar .ghost-button,
 .canvas-toolbar .toolbar-pill,
-.canvas-toolbar .toggle {
+.canvas-toolbar .toggle,
+.canvas-toolbar .icon-button {
   background: rgba(255, 255, 255, 0.98);
+}
+
+.canvas-toolbar-icon-button {
+  min-width: 2.2rem;
+  min-height: 2.2rem;
+}
+
+.canvas-toolbar-icon {
+  width: 0.98rem;
+  height: 0.98rem;
 }
 
 .canvas-mode-switch {
@@ -1875,7 +1885,9 @@ code {
   .canvas-toolbar {
     left: 1rem;
     right: 1rem;
+    width: auto;
     max-width: none;
+    grid-template-columns: 1fr;
   }
 
   .workspace-structure-title {
@@ -1883,14 +1895,13 @@ code {
     max-width: none;
   }
 
-  .canvas-toolbar-row,
-  .canvas-toolbar-row--toggles {
+  .canvas-toolbar-group,
+  .canvas-toolbar-group--zoom {
     justify-content: flex-start;
   }
 
-  .canvas-toolbar-kicker {
-    margin-right: 0;
-    inline-size: 100%;
+  .canvas-toolbar-group--zoom {
+    flex-wrap: wrap;
   }
 
   .canvas-key {
