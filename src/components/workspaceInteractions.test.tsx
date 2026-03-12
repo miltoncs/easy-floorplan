@@ -35,6 +35,8 @@ describe('workspace interactions', () => {
     await waitFor(() => expect(screen.getByTestId(`wall-label-${firstWall.id}`)).toHaveTextContent(`10' 6"`))
 
     fireEvent.click(screen.getByTestId(`wall-hit-${firstWall.id}`))
+    expect(screen.getByTestId(`wall-hit-${firstWall.id}`)).toHaveClass('selected')
+    expect(screen.getByTestId(`room-segment-${firstWall.id}`)).toHaveClass('selected')
     expect(screen.getByRole('dialog')).toHaveTextContent('Edit wall')
     expect(screen.getByDisplayValue(firstWall.label)).toBeInTheDocument()
     expect(screen.queryByRole('spinbutton', { name: 'Angle (deg)' })).not.toBeInTheDocument()
@@ -510,6 +512,7 @@ describe('workspace interactions', () => {
     mockCanvasRect(svg)
 
     const furnitureRect = screen.getByTestId(`furniture-${room.furniture[0].id}`)
+    expect(furnitureRect).toHaveClass('selected')
     fireEvent.pointerDown(furnitureRect, {
       button: 0,
       pointerId: 12,
