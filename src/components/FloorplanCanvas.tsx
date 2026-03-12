@@ -239,6 +239,8 @@ export function FloorplanCanvas() {
   const viewBox = getViewBox(rotatedViewBounds, ui.camera.zoom, ui.camera.offset, canvasAspectRatio)
   const viewRotationTransform = getViewRotationTransform(viewBox, viewRotationQuarterTurns)
   const labelScale = draft.labelFontSize / DEFAULT_LABEL_FONT_SIZE
+  const inlineWallEditorSegmentId = inlineWallEditor?.segmentId
+  const inlineCornerEditorSegmentId = inlineCornerEditor?.target.segmentId
   const showSimplifiedDragPreview = Boolean(
     dragState?.moved && (dragState.kind === 'room' || dragState.kind === 'wall'),
   )
@@ -521,22 +523,22 @@ export function FloorplanCanvas() {
   }, [])
 
   useEffect(() => {
-    if (!inlineWallEditor) {
+    if (!inlineWallEditorSegmentId) {
       return
     }
 
     inlineWallInputRef.current?.focus()
     inlineWallInputRef.current?.select()
-  }, [inlineWallEditor?.segmentId])
+  }, [inlineWallEditorSegmentId])
 
   useEffect(() => {
-    if (!inlineCornerEditor) {
+    if (!inlineCornerEditorSegmentId) {
       return
     }
 
     inlineCornerInputRef.current?.focus()
     inlineCornerInputRef.current?.select()
-  }, [inlineCornerEditor?.target.segmentId])
+  }, [inlineCornerEditorSegmentId])
 
   useEffect(() => {
     if (showSimplifiedDragPreview) {
