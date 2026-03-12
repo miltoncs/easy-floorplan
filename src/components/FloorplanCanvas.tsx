@@ -1995,6 +1995,14 @@ export function FloorplanCanvas() {
     const active = draft.selectedRoomId === room.id
     const hovered = matchesTarget(ui.hoveredTarget, roomTarget)
     const multiSelected = isTargetSelected(ui.selectionTargets, roomTarget)
+    const isWallSelected = (segmentId: string) =>
+      isTargetSelected(ui.selectionTargets, {
+        kind: 'wall',
+        structureId: activeStructure.id,
+        floorId: floor.id,
+        roomId: room.id,
+        segmentId,
+      })
     const roomDragDelta = getDraggedRoomDelta(dragState, activeStructure.id, floor.id, room.id)
     const roomTransform = roomDragDelta ? `translate(${roomDragDelta.x} ${-roomDragDelta.y})` : undefined
 
@@ -2065,24 +2073,29 @@ export function FloorplanCanvas() {
           />
         ) : null}
 
-        {geometry.segments.map((segment) => (
-          <line
-            key={segment.id}
-            className={[
-              'room-segment',
-              hovered ? 'hovered' : '',
-              active || multiSelected ? 'active' : '',
-            ]
-              .filter(Boolean)
-              .join(' ')}
-            data-testid={`room-segment-${segment.id}`}
-            vectorEffect="non-scaling-stroke"
-            x1={segment.start.x}
-            x2={segment.end.x}
-            y1={-segment.start.y}
-            y2={-segment.end.y}
-          />
-        ))}
+        {geometry.segments.map((segment) => {
+          const wallSelected = isWallSelected(segment.id)
+
+          return (
+            <line
+              key={segment.id}
+              className={[
+                'room-segment',
+                hovered ? 'hovered' : '',
+                active || multiSelected ? 'active' : '',
+                wallSelected ? 'selected' : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+              data-testid={`room-segment-${segment.id}`}
+              vectorEffect="non-scaling-stroke"
+              x1={segment.start.x}
+              x2={segment.end.x}
+              y1={-segment.start.y}
+              y2={-segment.end.y}
+            />
+          )
+        })}
 
         {!showSimplifiedDragPreview
           ? geometry.segments.map((segment) => {
@@ -2093,6 +2106,7 @@ export function FloorplanCanvas() {
                 roomId: room.id,
                 segmentId: segment.id,
               }
+              const wallSelected = isWallSelected(segment.id)
 
               return (
                 <line
@@ -2100,7 +2114,7 @@ export function FloorplanCanvas() {
                   className={[
                     'wall-hit',
                     matchesTarget(ui.hoveredTarget, target) ? 'hovered' : '',
-                    isTargetSelected(ui.selectionTargets, target) ? 'selected' : '',
+                    wallSelected ? 'selected' : '',
                   ]
                     .filter(Boolean)
                     .join(' ')}
@@ -2150,17 +2164,18 @@ export function FloorplanCanvas() {
               }
               const furnitureHovered = matchesTarget(ui.hoveredTarget, furnitureTarget)
               const furnitureSelected = isTargetSelected(ui.selectionTargets, furnitureTarget)
+              const furnitureActive = draft.selectedFurnitureId === item.id || furnitureSelected
               const centerX = item.x + item.width / 2
               const centerY = item.y - item.depth / 2
 
               return (
                 <g
                   key={item.id}
-                  className={draft.selectedFurnitureId === item.id || furnitureSelected ? 'furniture-layer active' : 'furniture-layer'}
+                  className={furnitureActive ? 'furniture-layer active' : 'furniture-layer'}
                   transform={`rotate(${-item.rotation} ${centerX} ${-centerY})`}
                 >
                   <rect
-                    className={['furniture-rect', furnitureHovered ? 'hovered' : '', furnitureSelected ? 'selected' : ''].filter(Boolean).join(' ')}
+                    className={['furniture-rect', furnitureHovered ? 'hovered' : '', furnitureActive ? 'selected' : ''].filter(Boolean).join(' ')}
                     data-testid={`furniture-${item.id}`}
                     x={item.x}
                     y={-(item.y)}

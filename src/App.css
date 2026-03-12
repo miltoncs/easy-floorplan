@@ -557,6 +557,11 @@
   --canvas-wall-line-width: 2px;
   --canvas-label-font-size: 12.5px;
   --canvas-label-scale: 1;
+  --canvas-highlight-blue: rgba(104, 161, 232, 0.98);
+  --canvas-highlight-blue-hover: rgba(147, 193, 244, 0.82);
+  --canvas-highlight-blue-soft: rgba(186, 218, 250, 0.5);
+  --canvas-highlight-blue-fill: rgba(154, 201, 249, 0.84);
+  --canvas-highlight-blue-strong: rgba(86, 146, 223, 1);
   position: relative;
   flex: 1 1 auto;
   min-height: 0;
@@ -763,11 +768,21 @@
   stroke-width: calc(var(--canvas-wall-line-width) * 1.4);
 }
 
+.room-segment.selected {
+  stroke: var(--canvas-highlight-blue-strong);
+  stroke-width: calc(var(--canvas-wall-line-width) * 1.7);
+}
+
 .furniture-rect {
   fill: rgba(255, 255, 255, 0.6);
   stroke: rgba(17, 17, 17, 0.68);
   stroke-width: 0.12;
   cursor: grab;
+}
+
+.furniture-rect.hovered {
+  fill: var(--canvas-highlight-blue-soft);
+  stroke: var(--canvas-highlight-blue-strong);
 }
 
 .suggested-path {
@@ -862,9 +877,14 @@
     stroke-width 160ms ease;
 }
 
+.wall-hit.hovered {
+  stroke: var(--canvas-highlight-blue-hover);
+  stroke-width: calc(var(--canvas-wall-line-width) * 1.5);
+}
+
 .wall-hit.selected {
-  stroke: rgba(17, 17, 17, 0.58);
-  stroke-width: calc(var(--canvas-wall-line-width) * 1.6);
+  stroke: var(--canvas-highlight-blue-strong);
+  stroke-width: calc(var(--canvas-wall-line-width) * 2);
 }
 
 .corner-hit {
@@ -1186,9 +1206,9 @@
   background: rgba(255, 255, 255, 0.9);
 }
 .furniture-rect.selected {
-  fill: rgba(17, 17, 17, 0.08);
-  stroke: rgba(17, 17, 17, 0.92);
-  stroke-width: 0.16;
+  fill: var(--canvas-highlight-blue-fill);
+  stroke: var(--canvas-highlight-blue-strong);
+  stroke-width: 0.18;
 }
 
 .canvas-context-menu {
