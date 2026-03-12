@@ -5,7 +5,7 @@ import {
   DEFAULT_FURNITURE_SNAP_STRENGTH,
   DEFAULT_LABEL_FONT_SIZE,
   DEFAULT_SHOW_LABEL_SHAPES,
-  DEFAULT_WALL_STROKE_SCALE,
+  DEFAULT_WALL_STROKE_WIDTH_PX,
 } from './blueprint'
 import {
   createStructureExportEnvelope,
@@ -31,7 +31,7 @@ describe('serialization', () => {
     const legacyDraft = structuredClone(draft) as Record<string, unknown>
     delete legacyDraft.showWallLabels
     delete legacyDraft.showAngleLabels
-    delete legacyDraft.wallStrokeScale
+    delete legacyDraft.wallStrokeWidthPx
     delete legacyDraft.labelFontSize
     delete legacyDraft.showLabelShapes
     delete legacyDraft.furnitureSnapStrength
@@ -42,12 +42,25 @@ describe('serialization', () => {
     expect(workspaceImport.kind).toBe('workspace')
     expect(workspaceImport.kind === 'workspace' ? workspaceImport.draft.showWallLabels : null).toBe(true)
     expect(workspaceImport.kind === 'workspace' ? workspaceImport.draft.showAngleLabels : null).toBe(true)
-    expect(workspaceImport.kind === 'workspace' ? workspaceImport.draft.wallStrokeScale : null).toBe(DEFAULT_WALL_STROKE_SCALE)
+    expect(workspaceImport.kind === 'workspace' ? workspaceImport.draft.wallStrokeWidthPx : null).toBe(
+      DEFAULT_WALL_STROKE_WIDTH_PX,
+    )
     expect(workspaceImport.kind === 'workspace' ? workspaceImport.draft.labelFontSize : null).toBe(DEFAULT_LABEL_FONT_SIZE)
     expect(workspaceImport.kind === 'workspace' ? workspaceImport.draft.showLabelShapes : null).toBe(DEFAULT_SHOW_LABEL_SHAPES)
     expect(workspaceImport.kind === 'workspace' ? workspaceImport.draft.furnitureSnapStrength : null).toBe(DEFAULT_FURNITURE_SNAP_STRENGTH)
     expect(workspaceImport.kind === 'workspace' ? workspaceImport.draft.furnitureCornerSnapStrength : null).toBe(DEFAULT_FURNITURE_CORNER_SNAP_STRENGTH)
     expect(structureImport.kind).toBe('structure')
+  })
+
+  it('converts legacy wall stroke scale imports into pixel widths', () => {
+    const legacyDraft = structuredClone(createSeedState()) as Record<string, unknown>
+
+    legacyDraft.wallStrokeScale = 1.6
+    delete legacyDraft.wallStrokeWidthPx
+
+    const workspaceImport = normalizeImportedJson(legacyDraft)
+
+    expect(workspaceImport.kind === 'workspace' ? workspaceImport.draft.wallStrokeWidthPx : null).toBe(3.2)
   })
 
   it('defaults missing corner snap strength from the stored wall snap strength', () => {

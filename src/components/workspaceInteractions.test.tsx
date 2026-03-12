@@ -42,7 +42,7 @@ describe('workspace interactions', () => {
     await waitFor(() => expect(screen.getByTestId(`wall-label-${firstWall.id}`)).toHaveTextContent(`12' 3"`))
 
     fireEvent.click(screen.getByTestId(`corner-label-${firstWall.id}`))
-    const inlineAngle = screen.getByRole('textbox', { name: 'Corner angle' })
+    const inlineAngle = screen.getByRole('textbox', { name: 'Corner angle' }) as HTMLInputElement
     expect(inlineAngle).toHaveValue('90')
     fireEvent.change(inlineAngle, { target: { value: '1' } })
     expect(inlineAngle).toHaveValue('1')

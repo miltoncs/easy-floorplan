@@ -150,6 +150,7 @@ function isDraftStateLike(value: unknown): value is DraftState {
     (!('showRoomFloorLabels' in value) || typeof value.showRoomFloorLabels === 'boolean') &&
     (!('showWallLabels' in value) || typeof value.showWallLabels === 'boolean') &&
     (!('showAngleLabels' in value) || typeof value.showAngleLabels === 'boolean') &&
+    (!('wallStrokeWidthPx' in value) || typeof value.wallStrokeWidthPx === 'number') &&
     (!('wallStrokeScale' in value) || typeof value.wallStrokeScale === 'number') &&
     (!('labelFontSize' in value) || typeof value.labelFontSize === 'number') &&
     (!('showLabelShapes' in value) || typeof value.showLabelShapes === 'boolean') &&

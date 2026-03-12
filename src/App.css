@@ -554,7 +554,7 @@
 }
 
 .canvas-stage {
-  --canvas-wall-line-scale: 1;
+  --canvas-wall-line-width: 2px;
   --canvas-label-font-size: 12.5px;
   --canvas-label-scale: 1;
   position: relative;
@@ -750,7 +750,7 @@
 
 .room-segment {
   stroke: rgba(20, 20, 20, 0.96);
-  stroke-width: calc(0.2 * var(--canvas-wall-line-scale));
+  stroke-width: var(--canvas-wall-line-width);
   stroke-linecap: square;
   pointer-events: none;
   transition:
@@ -760,7 +760,7 @@
 }
 
 .room-segment.active {
-  stroke-width: calc(0.28 * var(--canvas-wall-line-scale));
+  stroke-width: calc(var(--canvas-wall-line-width) * 1.4);
 }
 
 .furniture-rect {
@@ -773,7 +773,7 @@
 .suggested-path {
   fill: none;
   stroke: rgba(99, 99, 99, 0.9);
-  stroke-width: 0.22;
+  stroke-width: calc(var(--canvas-wall-line-width) * 1.1);
   stroke-dasharray: 0.45 0.25;
   stroke-linecap: round;
 }
@@ -857,11 +857,14 @@
 
 .wall-hit {
   cursor: pointer;
+  transition:
+    stroke 160ms ease,
+    stroke-width 160ms ease;
 }
 
 .wall-hit.selected {
   stroke: rgba(17, 17, 17, 0.58);
-  stroke-width: calc(0.32 * var(--canvas-wall-line-scale));
+  stroke-width: calc(var(--canvas-wall-line-width) * 1.6);
 }
 
 .corner-hit {
@@ -895,7 +898,7 @@
   inline-size: 1.8rem;
   block-size: 0;
   border-top-style: solid;
-  border-top-width: calc(2px * var(--canvas-wall-line-scale));
+  border-top-width: var(--canvas-wall-line-width);
   border-top-color: rgba(17, 17, 17, 0.88);
 }
 

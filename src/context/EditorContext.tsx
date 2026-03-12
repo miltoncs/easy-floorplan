@@ -14,11 +14,11 @@ import {
   MAX_FURNITURE_CORNER_SNAP_STRENGTH,
   MAX_FURNITURE_SNAP_STRENGTH,
   MAX_LABEL_FONT_SIZE,
-  MAX_WALL_STROKE_SCALE,
+  MAX_WALL_STROKE_WIDTH_PX,
   MIN_FURNITURE_CORNER_SNAP_STRENGTH,
   MIN_FURNITURE_SNAP_STRENGTH,
   MIN_LABEL_FONT_SIZE,
-  MIN_WALL_STROKE_SCALE,
+  MIN_WALL_STROKE_WIDTH_PX,
   cloneImportedStructure,
   computeFloorBounds,
   computeVisibleBounds,
@@ -1045,10 +1045,10 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
         },
         { touchStructure: false, recordHistory: false },
       ),
-    setWallStrokeScale: (value: number) =>
+    setWallStrokeWidthPx: (value: number) =>
       mutateDraft(
         (draft) => {
-          draft.wallStrokeScale = clamp(value, MIN_WALL_STROKE_SCALE, MAX_WALL_STROKE_SCALE)
+          draft.wallStrokeWidthPx = clamp(value, MIN_WALL_STROKE_WIDTH_PX, MAX_WALL_STROKE_WIDTH_PX)
         },
         { touchStructure: false, recordHistory: false },
       ),

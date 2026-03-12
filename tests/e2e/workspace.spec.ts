@@ -212,6 +212,31 @@ test('supports right-click menus across the 2D view and JSON round-trips', async
   await expect(page.getByRole('heading', { name: 'Cedar House' })).toBeVisible()
 })
 
+test('keeps wall strokes a constant screen width while zooming', async ({ page }) => {
+  await page.goto('/workspace')
+  await page.waitForLoadState('networkidle')
+
+  const wall = page.locator('[data-testid^="room-segment-"]').first()
+  const beforeZoom = await wall.boundingBox()
+  if (!beforeZoom) {
+    throw new Error('Expected wall bounding box before zoom')
+  }
+
+  const zoomInButton = page.getByRole('button', { name: '+' })
+  for (let index = 0; index < 20; index += 1) {
+    await zoomInButton.click()
+  }
+  await expect(page.locator('.toolbar-pill').first()).toHaveText('181%')
+
+  const afterZoom = await wall.boundingBox()
+  if (!afterZoom) {
+    throw new Error('Expected wall bounding box after zoom')
+  }
+
+  expect(afterZoom.width).toBeGreaterThan(beforeZoom.width * 1.5)
+  expect(Math.abs(afterZoom.height - beforeZoom.height)).toBeLessThan(0.35)
+})
+
 function parseViewBox(value: string | null) {
   if (!value) {
     throw new Error('Expected viewBox attribute')

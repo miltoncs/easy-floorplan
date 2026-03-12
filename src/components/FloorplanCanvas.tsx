@@ -243,7 +243,7 @@ export function FloorplanCanvas() {
     dragState?.moved && (dragState.kind === 'room' || dragState.kind === 'wall'),
   )
   const canvasAppearanceStyle = {
-    '--canvas-wall-line-scale': String(draft.wallStrokeScale),
+    '--canvas-wall-line-width': `${draft.wallStrokeWidthPx}px`,
     '--canvas-label-font-size': `${draft.labelFontSize}px`,
     '--canvas-label-scale': String(labelScale),
   } as CSSProperties
@@ -1673,15 +1673,6 @@ export function FloorplanCanvas() {
     })
   }
 
-  function openFullWallEditor(target: CanvasTarget) {
-    if (target.kind !== 'wall') {
-      return
-    }
-
-    setInlineWallEditor(null)
-    setInlineCornerEditor(null)
-    handleWallClick(target)
-  }
   function commitInlineWallEdit(nextValue?: string) {
     if (!inlineWallEditor) {
       return
@@ -2072,6 +2063,7 @@ export function FloorplanCanvas() {
               .filter(Boolean)
               .join(' ')}
             data-testid={`room-segment-${segment.id}`}
+            vectorEffect="non-scaling-stroke"
             x1={segment.start.x}
             x2={segment.end.x}
             y1={-segment.start.y}
@@ -2101,7 +2093,8 @@ export function FloorplanCanvas() {
                     .join(' ')}
                   data-testid={`wall-hit-${segment.id}`}
                   stroke="transparent"
-                  strokeWidth={1.2}
+                  strokeWidth={14}
+                  vectorEffect="non-scaling-stroke"
                   x1={segment.start.x}
                   x2={segment.end.x}
                   y1={-segment.start.y}
@@ -2214,7 +2207,7 @@ export function FloorplanCanvas() {
       return null
     }
 
-    return <path className="suggested-path" d={pointsToPath(points)} data-testid={dataTestId} />
+    return <path className="suggested-path" d={pointsToPath(points)} data-testid={dataTestId} vectorEffect="non-scaling-stroke" />
   }
 }
 

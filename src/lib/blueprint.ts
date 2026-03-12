@@ -25,9 +25,9 @@ import {
 } from './geometry'
 
 export const STORAGE_KEY = 'incremental-blueprint/v1'
-export const MIN_WALL_STROKE_SCALE = 0.6
-export const MAX_WALL_STROKE_SCALE = 2.2
-export const DEFAULT_WALL_STROKE_SCALE = 1
+export const MIN_WALL_STROKE_WIDTH_PX = 1.2
+export const MAX_WALL_STROKE_WIDTH_PX = 4.4
+export const DEFAULT_WALL_STROKE_WIDTH_PX = 2
 export const MIN_LABEL_FONT_SIZE = 10
 export const MAX_LABEL_FONT_SIZE = 18
 export const DEFAULT_LABEL_FONT_SIZE = 12.5
@@ -259,6 +259,8 @@ export function selectTargetInDraft(state: DraftState, target: CanvasTarget) {
 }
 
 export function normalizeDraftCanvasSettings(state: DraftState) {
+  const draftWithLegacyScale = state as DraftState & { wallStrokeScale?: unknown }
+
   if (typeof state.showRoomFloorLabels !== 'boolean') {
     state.showRoomFloorLabels = true
   }
@@ -268,11 +270,24 @@ export function normalizeDraftCanvasSettings(state: DraftState) {
   if (typeof state.showAngleLabels !== 'boolean') {
     state.showAngleLabels = true
   }
-  if (typeof state.wallStrokeScale !== 'number' || !Number.isFinite(state.wallStrokeScale)) {
-    state.wallStrokeScale = DEFAULT_WALL_STROKE_SCALE
+  if (typeof state.wallStrokeWidthPx !== 'number' || !Number.isFinite(state.wallStrokeWidthPx)) {
+    if (typeof draftWithLegacyScale.wallStrokeScale === 'number' && Number.isFinite(draftWithLegacyScale.wallStrokeScale)) {
+      state.wallStrokeWidthPx = clampNumber(
+        draftWithLegacyScale.wallStrokeScale * DEFAULT_WALL_STROKE_WIDTH_PX,
+        MIN_WALL_STROKE_WIDTH_PX,
+        MAX_WALL_STROKE_WIDTH_PX,
+      )
+    } else {
+      state.wallStrokeWidthPx = DEFAULT_WALL_STROKE_WIDTH_PX
+    }
   } else {
-    state.wallStrokeScale = clampNumber(state.wallStrokeScale, MIN_WALL_STROKE_SCALE, MAX_WALL_STROKE_SCALE)
+    state.wallStrokeWidthPx = clampNumber(
+      state.wallStrokeWidthPx,
+      MIN_WALL_STROKE_WIDTH_PX,
+      MAX_WALL_STROKE_WIDTH_PX,
+    )
   }
+  delete draftWithLegacyScale.wallStrokeScale
   if (typeof state.labelFontSize !== 'number' || !Number.isFinite(state.labelFontSize)) {
     state.labelFontSize = DEFAULT_LABEL_FONT_SIZE
   } else {

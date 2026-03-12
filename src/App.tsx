@@ -8,11 +8,11 @@ import {
   MAX_FURNITURE_CORNER_SNAP_STRENGTH,
   MAX_FURNITURE_SNAP_STRENGTH,
   MAX_LABEL_FONT_SIZE,
-  MAX_WALL_STROKE_SCALE,
+  MAX_WALL_STROKE_WIDTH_PX,
   MIN_FURNITURE_CORNER_SNAP_STRENGTH,
   MIN_FURNITURE_SNAP_STRENGTH,
   MIN_LABEL_FONT_SIZE,
-  MIN_WALL_STROKE_SCALE,
+  MIN_WALL_STROKE_WIDTH_PX,
 } from './lib/blueprint'
 import { DataPage } from './pages/DataPage'
 import { DetailPage } from './pages/DetailPage'
@@ -178,16 +178,16 @@ function AppSettingsDialog({
             <div className="settings-controls">
               <label className="settings-slider">
                 <span>Wall line width</span>
-                <strong>{Math.round(draft.wallStrokeScale * 100)}%</strong>
+                <strong>{formatSettingNumber(draft.wallStrokeWidthPx)} px</strong>
                 <input
                   aria-label="Wall line width"
                   className="settings-slider__input"
-                  max={Math.round(MAX_WALL_STROKE_SCALE * 100)}
-                  min={Math.round(MIN_WALL_STROKE_SCALE * 100)}
-                  onChange={(event) => actions.setWallStrokeScale(Number(event.target.value) / 100)}
-                  step={10}
+                  max={MAX_WALL_STROKE_WIDTH_PX}
+                  min={MIN_WALL_STROKE_WIDTH_PX}
+                  onChange={(event) => actions.setWallStrokeWidthPx(Number(event.target.value))}
+                  step={0.2}
                   type="range"
-                  value={Math.round(draft.wallStrokeScale * 100)}
+                  value={draft.wallStrokeWidthPx}
                 />
               </label>
 

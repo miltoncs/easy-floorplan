@@ -15,7 +15,7 @@ describe('app settings', () => {
 
     const dialog = screen.getByRole('dialog')
     fireEvent.change(within(dialog).getByRole('slider', { name: 'Wall line width' }), {
-      target: { value: '160' },
+      target: { value: '3.2' },
     })
     fireEvent.change(within(dialog).getByRole('slider', { name: 'Label font size' }), {
       target: { value: '16' },
@@ -32,11 +32,11 @@ describe('app settings', () => {
     const firstRoomLabel = screen.getAllByTestId(/room-label-/)[0]
     const savedDraft = window.localStorage.getItem(STORAGE_KEY)
 
-    expect(canvasStage.style.getPropertyValue('--canvas-wall-line-scale')).toBe('1.6')
+    expect(canvasStage.style.getPropertyValue('--canvas-wall-line-width')).toBe('3.2px')
     expect(canvasStage.style.getPropertyValue('--canvas-label-font-size')).toBe('16px')
     expect(canvasStage).toHaveClass('canvas-stage--plain-labels')
     expect(firstRoomLabel).toHaveClass('canvas-annotation--plain')
-    expect(savedDraft).toContain('"wallStrokeScale":1.6')
+    expect(savedDraft).toContain('"wallStrokeWidthPx":3.2')
     expect(savedDraft).toContain('"labelFontSize":16')
     expect(savedDraft).toContain('"showLabelShapes":false')
     expect(savedDraft).toContain('"furnitureSnapStrength":1.75')

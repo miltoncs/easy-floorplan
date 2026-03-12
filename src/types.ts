@@ -67,7 +67,7 @@ export type DraftState = {
   showRoomFloorLabels: boolean
   showWallLabels: boolean
   showAngleLabels: boolean
-  wallStrokeScale: number
+  wallStrokeWidthPx: number
   labelFontSize: number
   showLabelShapes: boolean
   furnitureSnapStrength: number
