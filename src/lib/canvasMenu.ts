@@ -5,6 +5,7 @@ export type CanvasMenuActionId =
   | 'add-floor'
   | 'add-furniture'
   | 'add-room'
+  | 'assign-to-room'
   | 'add-wall'
   | 'add-wall-after'
   | 'clear-measurements'
@@ -33,6 +34,8 @@ export type CanvasMenuActionItem = {
   id: CanvasMenuActionId
   label: string
   destructive?: boolean
+  roomId?: string
+  current?: boolean
 }
 
 export type CanvasMenuSubmenuItem = {
@@ -52,8 +55,29 @@ export function getCanvasMenuItems(
     canMeasureFromHere: boolean
     hasMeasurements: boolean
     includeMeasurementActions: boolean
+    assignableRooms?: Array<{
+      roomId: string
+      label: string
+      current: boolean
+    }>
   },
 ): CanvasMenuItem[] {
+  const assignRoomSubmenu =
+    options.assignableRooms && options.assignableRooms.length > 0
+      ? {
+          kind: 'submenu' as const,
+          id: 'assign-to-room',
+          label: 'Assign to Room',
+          items: options.assignableRooms.map((room) => ({
+            kind: 'action' as const,
+            id: 'assign-to-room' as const,
+            label: room.label,
+            roomId: room.roomId,
+            current: room.current,
+          })),
+        }
+      : null
+
   switch (target.kind) {
     case 'structure':
       return [
@@ -95,6 +119,7 @@ export function getCanvasMenuItems(
       return appendMeasurementItems([
         { kind: 'action', id: 'edit-wall', label: 'Edit wall measurements' },
         { kind: 'action', id: 'add-wall-after', label: 'Insert wall after' },
+        ...(assignRoomSubmenu ? [assignRoomSubmenu] : []),
         { kind: 'action', id: 'delete-wall', label: 'Delete wall', destructive: true },
       ], options)
     case 'corner':
@@ -105,6 +130,7 @@ export function getCanvasMenuItems(
       return appendMeasurementItems([
         { kind: 'action', id: 'edit-furniture', label: 'Edit furniture' },
         { kind: 'action', id: 'rename-furniture', label: 'Rename furniture' },
+        ...(assignRoomSubmenu ? [assignRoomSubmenu] : []),
         { kind: 'action', id: 'delete-furniture', label: 'Delete furniture', destructive: true },
       ], options)
     case 'canvas': {

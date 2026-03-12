@@ -81,6 +81,7 @@ type EditorContextValue = ReturnType<typeof useCreateEditorContextValue>
 const EditorContext = createContext<EditorContextValue | null>(null)
 
 type WallAnchorSide = 'before' | 'after'
+type AssignableCanvasTarget = Extract<CanvasTarget, { kind: 'wall' | 'furniture' }>
 
 function useCreateEditorContextValue(initialDraft?: DraftState) {
   const [state, dispatch] = useReducer(editorReducer, initialDraft, createInitialState)
@@ -643,6 +644,274 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
     return validation
   }
 
+  const appendWallToRoom = (
+    room: Room,
+    segment: Room['segments'][number],
+    placement: {
+      start: Point
+      heading: number
+    },
+  ) => {
+    const nextSegment = createSegment({
+      id: segment.id,
+      label: segment.label,
+      length: segment.length,
+      turn: segment.turn,
+      notes: segment.notes,
+    })
+
+    if (room.segments.length === 0) {
+      room.anchor = { ...placement.start }
+      room.startHeading = placement.heading
+    } else {
+      nextSegment.startPoint = { ...placement.start }
+      nextSegment.startHeading = placement.heading
+    }
+
+    room.segments.push(nextSegment)
+  }
+
+  const assignTargetsToRoom = (
+    targets: AssignableCanvasTarget[],
+    nextRoomId: string,
+    primaryTarget?: AssignableCanvasTarget,
+  ) => {
+    const uniqueTargets = Array.from(
+      new Map(targets.map((target) => [getAssignableTargetKey(target), target])).values(),
+    )
+
+    if (uniqueTargets.length === 0) {
+      setStatus('No selected walls or furniture could be reassigned.')
+      return
+    }
+
+    const { structureId, floorId } = uniqueTargets[0]
+    if (uniqueTargets.some((target) => target.structureId !== structureId || target.floorId !== floorId)) {
+      setStatus('Select walls and furniture from the same floor to assign them together.')
+      return
+    }
+
+    const destinationRoom = findRoomById(state.draft, structureId, floorId, nextRoomId)
+    if (!destinationRoom) {
+      setStatus('Room could not be found.')
+      return
+    }
+
+    const targetsToMove = uniqueTargets.filter((target) => target.roomId !== nextRoomId)
+    if (targetsToMove.length === 0) {
+      setStatus(`${describeAssignableTargets(uniqueTargets)} already belong to ${destinationRoom.name}.`)
+      return
+    }
+
+    const wallPlacements = new Map(
+      targetsToMove
+        .filter((target): target is Extract<AssignableCanvasTarget, { kind: 'wall' }> => target.kind === 'wall')
+        .map((target) => {
+          const sourceRoom = findRoomById(state.draft, target.structureId, target.floorId, target.roomId)
+          const sourceSegment = findSegmentById(
+            state.draft,
+            target.structureId,
+            target.floorId,
+            target.roomId,
+            target.segmentId,
+          )
+          const segmentGeometry = sourceRoom
+            ? roomToGeometry(sourceRoom).segments.find((segment) => segment.id === target.segmentId) ?? null
+            : null
+
+          if (!sourceSegment || !segmentGeometry) {
+            return [getAssignableTargetKey(target), null] as const
+          }
+
+          return [
+            getAssignableTargetKey(target),
+            {
+              segment: createSegment({
+                id: sourceSegment.id,
+                label: sourceSegment.label,
+                length: sourceSegment.length,
+                turn: sourceSegment.turn,
+                notes: sourceSegment.notes,
+              }),
+              placement: {
+                start: { ...segmentGeometry.start },
+                heading: segmentGeometry.heading,
+              },
+            },
+          ] as const
+        }),
+    )
+
+    if (
+      targetsToMove.some(
+        (target) => target.kind === 'wall' && !wallPlacements.get(getAssignableTargetKey(target)),
+      )
+    ) {
+      setStatus('Wall could not be reassigned.')
+      return
+    }
+
+    const previewDraft = structuredClone(state.draft)
+    const sourceRoomIdSet = new Set(targetsToMove.map((target) => target.roomId))
+    const previewFloor = findFloorById(previewDraft, structureId, floorId)
+    const previewDestinationRoom = findRoomById(previewDraft, structureId, floorId, nextRoomId)
+    if (!previewFloor || !previewDestinationRoom) {
+      setStatus('Room could not be found.')
+      return
+    }
+
+    for (const target of targetsToMove) {
+      if (target.kind === 'wall') {
+        const previewSourceRoom = findRoomById(previewDraft, target.structureId, target.floorId, target.roomId)
+        const wallPlacement = wallPlacements.get(getAssignableTargetKey(target))
+
+        if (!previewSourceRoom || !wallPlacement) {
+          setStatus('Wall could not be reassigned.')
+          return
+        }
+
+        const deletionResult = deleteRoomSegmentPreservingGeometry(previewSourceRoom, target.segmentId)
+        if (!deletionResult.deleted) {
+          setStatus('Wall could not be reassigned.')
+          return
+        }
+
+        appendWallToRoom(previewDestinationRoom, wallPlacement.segment, wallPlacement.placement)
+        continue
+      }
+
+      const previewSourceRoom = findRoomById(previewDraft, target.structureId, target.floorId, target.roomId)
+      if (!previewSourceRoom) {
+        setStatus('Furniture could not be reassigned.')
+        return
+      }
+
+      const furnitureIndex = previewSourceRoom.furniture.findIndex((item) => item.id === target.furnitureId)
+      if (furnitureIndex < 0) {
+        setStatus('Furniture could not be reassigned.')
+        return
+      }
+
+      const [movedFurniture] = previewSourceRoom.furniture.splice(furnitureIndex, 1)
+      previewDestinationRoom.furniture.push(movedFurniture)
+    }
+
+    const deletedRoomIdSet = new Set(
+      Array.from(sourceRoomIdSet).filter((roomId) => {
+        if (roomId === nextRoomId) {
+          return false
+        }
+
+        const room = previewFloor.rooms.find((candidate) => candidate.id === roomId)
+        return Boolean(room && room.segments.length === 0 && room.furniture.length === 0)
+      }),
+    )
+
+    if (deletedRoomIdSet.size > 0) {
+      previewFloor.rooms = previewFloor.rooms.filter((room) => !deletedRoomIdSet.has(room.id))
+    }
+
+    const validation = validateRoomWalls(previewDestinationRoom)
+    if (!validation.valid) {
+      setStatus(validation.error)
+      return
+    }
+
+    const nextFocusedTarget = mapAssignableTargetToRoom(primaryTarget ?? targetsToMove[0], nextRoomId)
+    const movedTargetKeySet = new Set(targetsToMove.map((target) => getAssignableTargetKey(target)))
+    const mappedSelectionTargets = state.ui.selectionTargets.map((selectionTarget) => {
+      if ((selectionTarget.kind !== 'wall' && selectionTarget.kind !== 'furniture') || !movedTargetKeySet.has(getAssignableTargetKey(selectionTarget))) {
+        return selectionTarget
+      }
+
+      return mapAssignableTargetToRoom(selectionTarget, nextRoomId)
+    }).filter((selectionTarget) => !targetReferencesDeletedRoom(selectionTarget, deletedRoomIdSet))
+    const nextSelectionTargets =
+      mappedSelectionTargets.length > 0 ? mappedSelectionTargets : [nextFocusedTarget]
+
+    startTransition(() => {
+      dispatch({
+        type: 'mutateDraft',
+        recipe: (draft) => {
+          const editableFloor = findFloorById(draft, structureId, floorId)
+          const editableDestinationRoom = findRoomById(draft, structureId, floorId, nextRoomId)
+          if (!editableFloor || !editableDestinationRoom) {
+            return
+          }
+
+          for (const target of targetsToMove) {
+            if (target.kind === 'wall') {
+              const editableSourceRoom = findRoomById(draft, target.structureId, target.floorId, target.roomId)
+              const wallPlacement = wallPlacements.get(getAssignableTargetKey(target))
+
+              if (!editableSourceRoom || !wallPlacement) {
+                return
+              }
+
+              const deletionResult = deleteRoomSegmentPreservingGeometry(editableSourceRoom, target.segmentId)
+              if (!deletionResult.deleted) {
+                return
+              }
+
+              appendWallToRoom(editableDestinationRoom, wallPlacement.segment, wallPlacement.placement)
+              continue
+            }
+
+            const editableSourceRoom = findRoomById(draft, target.structureId, target.floorId, target.roomId)
+            if (!editableSourceRoom) {
+              return
+            }
+
+            const furnitureIndex = editableSourceRoom.furniture.findIndex((item) => item.id === target.furnitureId)
+            if (furnitureIndex < 0) {
+              return
+            }
+
+            const [movedFurniture] = editableSourceRoom.furniture.splice(furnitureIndex, 1)
+            editableDestinationRoom.furniture.push(movedFurniture)
+          }
+
+          if (deletedRoomIdSet.size > 0) {
+            editableFloor.rooms = editableFloor.rooms.filter((room) => !deletedRoomIdSet.has(room.id))
+          }
+
+          selectTargetInDraft(draft, nextFocusedTarget)
+        },
+        options: {
+          status: `${describeAssignableTargets(targetsToMove)} assigned to ${destinationRoom.name}.`,
+        },
+      })
+      dispatch({ type: 'setSelectionTargets', targets: nextSelectionTargets })
+      dispatch({ type: 'setFocusedTarget', target: nextFocusedTarget })
+    })
+  }
+
+  const assignFurnitureToRoom = (
+    structureId: string,
+    floorId: string,
+    roomId: string,
+    furnitureId: string,
+    nextRoomId: string,
+  ) =>
+    assignTargetsToRoom(
+      [{ kind: 'furniture', structureId, floorId, roomId, furnitureId }],
+      nextRoomId,
+      { kind: 'furniture', structureId, floorId, roomId, furnitureId },
+    )
+
+  const assignWallToRoom = (
+    structureId: string,
+    floorId: string,
+    roomId: string,
+    segmentId: string,
+    nextRoomId: string,
+  ) =>
+    assignTargetsToRoom(
+      [{ kind: 'wall', structureId, floorId, roomId, segmentId }],
+      nextRoomId,
+      { kind: 'wall', structureId, floorId, roomId, segmentId },
+    )
+
   const actions = {
     mutateDraft,
     setStatus,
@@ -1057,6 +1326,9 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
     rotateRoom,
     moveRoom,
     moveFurniture,
+    assignTargetsToRoom,
+    assignFurnitureToRoom,
+    assignWallToRoom,
     addWallFromAnchor,
     openContextMenu: (menu: NonNullable<ContextMenuState>) => dispatch({ type: 'openContextMenu', menu }),
     closeContextMenu: () => dispatch({ type: 'closeContextMenu' }),
@@ -1135,6 +1407,49 @@ export function useEditor() {
 
 function capitalize(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1)
+}
+
+function getAssignableTargetKey(target: AssignableCanvasTarget) {
+  switch (target.kind) {
+    case 'wall':
+      return `wall:${target.structureId}:${target.floorId}:${target.roomId}:${target.segmentId}`
+    case 'furniture':
+      return `furniture:${target.structureId}:${target.floorId}:${target.roomId}:${target.furnitureId}`
+  }
+}
+
+function mapAssignableTargetToRoom(target: AssignableCanvasTarget, roomId: string): AssignableCanvasTarget {
+  return {
+    ...target,
+    roomId,
+  }
+}
+
+function describeAssignableTargets(targets: AssignableCanvasTarget[]) {
+  const walls = targets.filter((target) => target.kind === 'wall').length
+  const furniture = targets.filter((target) => target.kind === 'furniture').length
+  const parts = [
+    walls > 0 ? `${walls} wall${walls === 1 ? '' : 's'}` : '',
+    furniture > 0 ? `${furniture} furniture item${furniture === 1 ? '' : 's'}` : '',
+  ].filter(Boolean)
+
+  return parts.join(' and ')
+}
+
+function targetReferencesDeletedRoom(target: CanvasTarget, deletedRoomIdSet: Set<string>) {
+  if (deletedRoomIdSet.size === 0) {
+    return false
+  }
+
+  switch (target.kind) {
+    case 'room':
+    case 'wall':
+    case 'corner':
+    case 'furniture':
+      return deletedRoomIdSet.has(target.roomId)
+    default:
+      return false
+  }
 }
 
 function isEditableEventTarget(target: EventTarget | null) {

@@ -1298,6 +1298,22 @@
   background: rgba(255, 255, 255, 0.5);
 }
 
+.context-menu-item__content {
+  display: inline-grid;
+  grid-template-columns: 0.7rem 1fr;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.context-menu-item__mark {
+  opacity: 0;
+  color: rgba(17, 17, 17, 0.72);
+}
+
+.context-menu-item__mark.visible {
+  opacity: 1;
+}
+
 .context-menu-submenu {
   position: relative;
 }

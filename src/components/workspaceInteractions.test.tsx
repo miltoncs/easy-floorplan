@@ -1422,6 +1422,10 @@ describe('workspace interactions', () => {
     fireEvent.contextMenu(screen.getByTestId(`wall-label-${wall.id}`))
     expect(screen.getByRole('menu')).toHaveTextContent('Edit wall measurements')
     expect(screen.getByRole('menu')).toHaveTextContent('Measure From Here')
+    expect(screen.getByRole('menu')).toHaveTextContent('Assign to Room')
+    await user.click(screen.getByRole('menuitem', { name: 'Assign to Room' }))
+    const wallAssignSubmenu = screen.getByRole('menu', { name: 'Assign to Room submenu' })
+    expect(within(wallAssignSubmenu).getByRole('menuitem', { name: room.name })).toHaveTextContent(new RegExp(`•\\s*${room.name}`))
     fireEvent.pointerDown(document.body)
 
     fireEvent.contextMenu(screen.getByTestId(`corner-hit-${wall.id}`))
@@ -1442,6 +1446,7 @@ describe('workspace interactions', () => {
     fireEvent.contextMenu(screen.getByTestId(`furniture-${furniture.id}`))
     expect(screen.getByRole('menu')).toHaveTextContent('Edit furniture')
     expect(screen.getByRole('menu')).toHaveTextContent('Measure From Here')
+    expect(screen.getByRole('menu')).toHaveTextContent('Assign to Room')
   })
 
   it('measures arbitrary distances on the canvas and clears them independently of selection', async () => {
@@ -1512,6 +1517,135 @@ describe('workspace interactions', () => {
     await waitFor(() => expect(screen.queryAllByTestId(/canvas-measurement-label-/)).toHaveLength(0))
     expect(screen.queryAllByTestId(/canvas-measurement-line-/)).toHaveLength(0)
     expect(screen.queryByTestId('canvas-measurement-pending')).not.toBeInTheDocument()
+  })
+
+  it('reassigns walls and furniture to another room from the context menu', async () => {
+    const user = userEvent.setup()
+    const draft = createSeedState()
+    const floor = draft.structures[0].floors[0]
+    const livingRoom = floor.rooms[0]
+    const hall = floor.rooms[1]
+    const wall = livingRoom.segments[0]
+    const furniture = livingRoom.furniture[0]
+
+    renderEditor({ draft })
+    const wallBefore = getWallLinePosition(wall.id)
+
+    fireEvent.contextMenu(screen.getByTestId(`wall-label-${wall.id}`))
+    await user.click(screen.getByRole('menuitem', { name: 'Assign to Room' }))
+    await user.click(screen.getByRole('menuitem', { name: hall.name }))
+
+    await waitFor(() => {
+      const saved = readSavedDraft()
+      const savedFloor = saved.structures[0].floors[0]
+      expect(savedFloor.rooms[0].segments.some((segment: { id: string }) => segment.id === wall.id)).toBe(false)
+      expect(savedFloor.rooms[1].segments.some((segment: { id: string }) => segment.id === wall.id)).toBe(true)
+    })
+    expect(getWallLinePosition(wall.id)).toEqual(wallBefore)
+
+    await user.click(screen.getByRole('button', { name: 'Furniture' }))
+    fireEvent.contextMenu(screen.getByTestId(`furniture-${furniture.id}`))
+    await user.click(screen.getByRole('menuitem', { name: 'Assign to Room' }))
+    await user.click(screen.getByRole('menuitem', { name: hall.name }))
+
+    await waitFor(() => {
+      const saved = readSavedDraft()
+      const savedFloor = saved.structures[0].floors[0]
+      expect(savedFloor.rooms[0].furniture.some((item: { id: string }) => item.id === furniture.id)).toBe(false)
+      expect(savedFloor.rooms[1].furniture.some((item: { id: string }) => item.id === furniture.id)).toBe(true)
+    })
+  })
+
+  it('assigns all selected walls and furniture to a room from the context menu', async () => {
+    const user = userEvent.setup()
+    const draft = createSeedState()
+    const sourceRoom = createRoom({
+      id: 'room-source',
+      name: 'Source room',
+      anchor: { x: 0, y: 0 },
+      startHeading: 0,
+      segments: [
+        createSegment({ id: 'wall-a', label: 'Wall A', length: 8, turn: 0 }),
+        createSegment({
+          id: 'wall-b',
+          label: 'Wall B',
+          length: 5,
+          turn: 0,
+          startPoint: { x: 18, y: 0 },
+          startHeading: 90,
+        }),
+      ],
+      furniture: [createFurniture({ id: 'furn-a', name: 'Chair', x: 2, y: -1, width: 2, depth: 2 })],
+    })
+    const destinationRoom = createRoom({
+      id: 'room-destination',
+      name: 'Destination room',
+      anchor: { x: 52, y: 0 },
+      startHeading: 0,
+      segments: [],
+      furniture: [],
+    })
+
+    draft.structures[0].floors[0].rooms = [sourceRoom, destinationRoom]
+    draft.selectedRoomId = sourceRoom.id
+    draft.selectedFurnitureId = null
+    draft.editorMode = 'furniture'
+
+    renderEditor({
+      draft,
+      selectionTargets: [
+        {
+          kind: 'room',
+          structureId: draft.activeStructureId,
+          floorId: draft.activeFloorId,
+          roomId: sourceRoom.id,
+        },
+        {
+          kind: 'wall',
+          structureId: draft.activeStructureId,
+          floorId: draft.activeFloorId,
+          roomId: sourceRoom.id,
+          segmentId: 'wall-a',
+        },
+        {
+          kind: 'wall',
+          structureId: draft.activeStructureId,
+          floorId: draft.activeFloorId,
+          roomId: sourceRoom.id,
+          segmentId: 'wall-b',
+        },
+        {
+          kind: 'furniture',
+          structureId: draft.activeStructureId,
+          floorId: draft.activeFloorId,
+          roomId: sourceRoom.id,
+          furnitureId: 'furn-a',
+        },
+      ],
+      focusedTarget: {
+        kind: 'wall',
+        structureId: draft.activeStructureId,
+        floorId: draft.activeFloorId,
+        roomId: sourceRoom.id,
+        segmentId: 'wall-a',
+      },
+    })
+
+    await waitFor(() => expect(screen.getByTestId('box-selection-summary')).toHaveTextContent('1 room'))
+    expect(screen.getByTestId('box-selection-summary')).toHaveTextContent('1 furniture item')
+    expect(screen.getByTestId('box-selection-summary')).toHaveTextContent('2 walls')
+
+    fireEvent.contextMenu(screen.getByTestId('wall-hit-wall-a'))
+    await user.click(screen.getByRole('menuitem', { name: 'Assign to Room' }))
+    await user.click(screen.getByRole('menuitem', { name: destinationRoom.name }))
+
+    await waitFor(() => {
+      const saved = readSavedDraft()
+      const savedFloor = saved.structures[0].floors[0]
+      expect(savedFloor.rooms.map((room: { id: string }) => room.id)).toEqual(['room-destination'])
+      expect(savedFloor.rooms[0].segments.map((segment: { id: string }) => segment.id)).toEqual(['wall-a', 'wall-b'])
+      expect(savedFloor.rooms[0].furniture.map((item: { id: string }) => item.id)).toEqual(['furn-a'])
+    })
   })
 
   it('keeps annotations near their geometry by hiding them once the described element is well offscreen', async () => {

@@ -1637,7 +1637,9 @@ export function FloorplanCanvas() {
 
   function openContextMenu(event: ReactMouseEvent<Element>, target: CanvasTarget) {
     event.preventDefault()
-    actions.selectTarget(target)
+    if (!isTargetSelected(ui.selectionTargets, target)) {
+      actions.selectTarget(target)
+    }
     actions.openContextMenu({
       x: event.clientX,
       y: event.clientY,
