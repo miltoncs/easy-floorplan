@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createRoom, createSegment, getRoomLabelPoint, getViewBox } from './blueprint'
+import { createFloor, createRoom, createSegment, getRoomLabelPoint, getRoomSuggestions, getViewBox } from './blueprint'
 
 describe('blueprint camera framing', () => {
   it('expands the viewBox to match a wider canvas aspect ratio', () => {
@@ -31,5 +31,48 @@ describe('blueprint camera framing', () => {
     })
 
     expect(getRoomLabelPoint(room)).toEqual({ x: 6, y: 6 })
+  })
+})
+
+describe('getRoomSuggestions', () => {
+  it('skips inferred closures that would intersect an existing wall', () => {
+    const room = createRoom({
+      anchor: { x: 0, y: 0 },
+      startHeading: 0,
+      segments: [
+        createSegment({ id: 'seg-a', length: 10, turn: 90 }),
+        createSegment({ id: 'seg-b', length: 2, turn: 90 }),
+        createSegment({ id: 'seg-c', length: 5, turn: -90 }),
+        createSegment({ id: 'seg-d', length: 4, turn: -90 }),
+        createSegment({ id: 'seg-e', length: 3, turn: 90 }),
+        createSegment({ id: 'seg-f', length: 2, turn: 135 }),
+      ],
+    })
+    const floor = createFloor({
+      rooms: [room],
+    })
+
+    expect(getRoomSuggestions(room, floor)).toEqual([])
+  })
+
+  it('keeps offering valid inferred closures', () => {
+    const room = createRoom({
+      anchor: { x: 0, y: 0 },
+      startHeading: 0,
+      segments: [
+        createSegment({ id: 'seg-a', length: 12, turn: 90 }),
+        createSegment({ id: 'seg-b', length: 8, turn: 90 }),
+      ],
+    })
+    const floor = createFloor({
+      rooms: [room],
+    })
+
+    expect(getRoomSuggestions(room, floor)).toContainEqual(
+      expect.objectContaining({
+        kind: 'rectangle',
+        title: 'Assume a rectangle and mirror the measured walls',
+      }),
+    )
   })
 })

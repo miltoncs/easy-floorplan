@@ -205,6 +205,7 @@ const MIN_HOVER_HITBOX_SCALE = 0.5
 const MAX_HOVER_HITBOX_SCALE = 1.35
 const SUGGESTION_ACTION_WIDTH_PX = 58
 const SUGGESTION_ACTION_HEIGHT_PX = 29
+const SUGGESTION_DASH_PATTERN = '10 7'
 
 export function FloorplanCanvas() {
   const {
@@ -2220,7 +2221,18 @@ export function FloorplanCanvas() {
       return null
     }
 
-    return <path className="suggested-path" d={pointsToPath(points)} data-testid={dataTestId} vectorEffect="non-scaling-stroke" />
+    return (
+      <path
+        className="suggested-path"
+        d={pointsToPath(points)}
+        data-testid={dataTestId}
+        style={{
+          strokeDasharray: SUGGESTION_DASH_PATTERN,
+          strokeLinecap: 'butt',
+        }}
+        vectorEffect="non-scaling-stroke"
+      />
+    )
   }
 }
 

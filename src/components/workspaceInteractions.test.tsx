@@ -786,6 +786,8 @@ describe('workspace interactions', () => {
 
     expect(suggestionActions.length).toBeGreaterThan(0)
     expect(suggestedPaths.length).toBeGreaterThan(0)
+    expect(suggestedPaths[0]).toHaveAttribute('style', expect.stringContaining('stroke-dasharray: 10 7'))
+    expect(suggestedPaths[0]).toHaveAttribute('style', expect.stringContaining('stroke-linecap: butt'))
 
     expect(within(suggestionActions[0]).getByRole('button', { name: 'Accept inferred wall' })).toBeInTheDocument()
     expect(within(suggestionActions[0]).getByRole('button', { name: 'Dismiss inferred wall' })).toBeInTheDocument()

@@ -22,6 +22,7 @@ import {
   roomToGeometry,
   round,
   subtractPoints,
+  validateRoomWalls,
 } from './geometry'
 
 export const STORAGE_KEY = 'incremental-blueprint/v1'
@@ -355,6 +356,31 @@ function buildClosureSegment(
   } satisfies RoomSuggestion
 }
 
+function canSuggestSegments(room: Room, segmentsToAdd: SuggestionSegment[]) {
+  const previewRoom = structuredClone(room)
+
+  segmentsToAdd.forEach((segment) => {
+    previewRoom.segments.push(createSegment(segment))
+  })
+
+  return validateRoomWalls(previewRoom).valid
+}
+
+function pushClosureSuggestion(
+  suggestions: RoomSuggestion[],
+  room: Room,
+  title: string,
+  detail: string,
+  segmentsToAdd: SuggestionSegment[],
+  kind: RoomSuggestion['kind'],
+) {
+  if (!canSuggestSegments(room, segmentsToAdd)) {
+    return
+  }
+
+  suggestions.push(buildClosureSegment(room, title, detail, segmentsToAdd, kind))
+}
+
 function createRoomSuggestionId({
   roomId,
   kind,
@@ -414,20 +440,19 @@ export function getRoomSuggestions(room: Room, floor: Floor) {
 
       if (directAlignment <= 8) {
         const turnBackToStart = angleDelta(closureHeading, primaryChain.segments[0]?.heading ?? room.startHeading)
-        suggestions.push(
-          buildClosureSegment(
-            room,
-            'Close the room with one final wall',
-            `${formatFeet(closureDistance)} returns to the starting corner.`,
-            [
-              {
-                label: `${room.name} closure wall`,
-                length: round(closureDistance),
-                turn: round(turnBackToStart, 1),
-              },
-            ],
-            'closure',
-          ),
+        pushClosureSuggestion(
+          suggestions,
+          room,
+          'Close the room with one final wall',
+          `${formatFeet(closureDistance)} returns to the starting corner.`,
+          [
+            {
+              label: `${room.name} closure wall`,
+              length: round(closureDistance),
+              turn: round(turnBackToStart, 1),
+            },
+          ],
+          'closure',
         )
       }
 
@@ -437,27 +462,26 @@ export function getRoomSuggestions(room: Room, floor: Floor) {
       if (forwardDistance > 0.25 && Math.abs(sideDistance) > 0.25) {
         const orthogonalTurn = sideDistance >= 0 ? 90 : -90
         const secondHeading = geometry.exitHeading + orthogonalTurn
-        suggestions.push(
-          buildClosureSegment(
-            room,
-            'Close with two orthogonal legs',
-            `${formatFeet(forwardDistance)} forward, then ${formatFeet(
-              Math.abs(sideDistance),
-            )} after a ${orthogonalTurn > 0 ? 'left' : 'right'} turn.`,
-            [
-              {
-                label: `${room.name} forward leg`,
-                length: round(forwardDistance),
-                turn: orthogonalTurn,
-              },
-              {
-                label: `${room.name} return leg`,
-                length: round(Math.abs(sideDistance)),
-                turn: round(angleDelta(secondHeading, primaryChain.segments[0]?.heading ?? room.startHeading), 1),
-              },
-            ],
-            'orthogonal',
-          ),
+        pushClosureSuggestion(
+          suggestions,
+          room,
+          'Close with two orthogonal legs',
+          `${formatFeet(forwardDistance)} forward, then ${formatFeet(
+            Math.abs(sideDistance),
+          )} after a ${orthogonalTurn > 0 ? 'left' : 'right'} turn.`,
+          [
+            {
+              label: `${room.name} forward leg`,
+              length: round(forwardDistance),
+              turn: orthogonalTurn,
+            },
+            {
+              label: `${room.name} return leg`,
+              length: round(Math.abs(sideDistance)),
+              turn: round(angleDelta(secondHeading, primaryChain.segments[0]?.heading ?? room.startHeading), 1),
+            },
+          ],
+          'orthogonal',
         )
       }
     }
@@ -470,27 +494,26 @@ export function getRoomSuggestions(room: Room, floor: Floor) {
     Math.abs(room.segments[0].turn - room.segments[1].turn) <= 5
   ) {
     const cornerTurn = room.segments[1].turn
-    suggestions.push(
-      buildClosureSegment(
-        room,
-        'Assume a rectangle and mirror the measured walls',
-        `${formatFeet(room.segments[0].length)} by ${formatFeet(
-          room.segments[1].length,
-        )} closes the room with the minimum common measurements.`,
-        [
-          {
-            label: `${room.name} mirrored wall`,
-            length: room.segments[0].length,
-            turn: cornerTurn,
-          },
-          {
-            label: `${room.name} final wall`,
-            length: room.segments[1].length,
-            turn: cornerTurn,
-          },
-        ],
-        'rectangle',
-      ),
+    pushClosureSuggestion(
+      suggestions,
+      room,
+      'Assume a rectangle and mirror the measured walls',
+      `${formatFeet(room.segments[0].length)} by ${formatFeet(
+        room.segments[1].length,
+      )} closes the room with the minimum common measurements.`,
+      [
+        {
+          label: `${room.name} mirrored wall`,
+          length: room.segments[0].length,
+          turn: cornerTurn,
+        },
+        {
+          label: `${room.name} final wall`,
+          length: room.segments[1].length,
+          turn: cornerTurn,
+        },
+      ],
+      'rectangle',
     )
   }
 
