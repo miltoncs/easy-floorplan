@@ -41,11 +41,24 @@ describe('workspace interactions', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save wall' }))
     await waitFor(() => expect(screen.getByTestId(`wall-label-${firstWall.id}`)).toHaveTextContent(`12' 3"`))
 
+    fireEvent.click(screen.getByTestId(`corner-label-${firstWall.id}`))
+    const inlineAngle = screen.getByRole('textbox', { name: 'Corner angle' })
+    expect(inlineAngle).toHaveValue('90')
+    fireEvent.change(inlineAngle, { target: { value: '1' } })
+    expect(inlineAngle).toHaveValue('1')
+    expect(inlineAngle.selectionStart).toBe(1)
+    expect(inlineAngle.selectionEnd).toBe(1)
+    fireEvent.change(inlineAngle, { target: { value: '120' } })
+    expect(inlineAngle).toHaveValue('120')
+    fireEvent.keyDown(inlineAngle, { key: 'Enter' })
+    await waitFor(() => expect(screen.getByTestId(`corner-label-${firstWall.id}`)).toHaveTextContent('120°'))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
     fireEvent.click(screen.getByTestId(`corner-hit-${firstWall.id}`))
     const cornerDialog = screen.getByRole('dialog')
     expect(cornerDialog).toHaveTextContent('Edit corner angle')
-    expect(screen.getByRole('spinbutton', { name: 'Angle (deg)' })).toHaveValue(90)
-    expect(cornerDialog).toHaveTextContent(/\+?90° between walls, left turn/)
+    expect(screen.getByRole('spinbutton', { name: 'Angle (deg)' })).toHaveValue(120)
+    expect(cornerDialog).toHaveTextContent(/\+?120° between walls, left turn/)
   })
 
   it('rotates rooms from the room context menu, including the custom rotation dialog', async () => {

@@ -965,6 +965,7 @@
 .canvas-corner-hover-label {
   position: absolute;
   transform: translate(-50%, -50%);
+  appearance: none;
   min-height: calc(1.55rem * var(--canvas-label-scale));
   padding: calc(0.28rem * var(--canvas-label-scale)) calc(0.58rem * var(--canvas-label-scale));
   border-radius: 0.62rem;
@@ -978,6 +979,43 @@
   letter-spacing: 0.04em;
   line-height: 1;
   white-space: nowrap;
+  pointer-events: auto;
+}
+
+.canvas-corner-hover-label.editing {
+  border-color: rgba(17, 17, 17, 0.22);
+  box-shadow: 0 12px 24px rgba(17, 17, 17, 0.12);
+}
+
+.canvas-corner-hover-label.invalid {
+  border-color: rgba(141, 63, 54, 0.36);
+  box-shadow: 0 10px 20px rgba(141, 63, 54, 0.14);
+}
+
+.canvas-corner-hover-button,
+.canvas-corner-hover-input {
+  margin: 0;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+}
+
+.canvas-corner-hover-button {
+  cursor: text;
+}
+
+.canvas-corner-hover-input {
+  appearance: textfield;
+  -moz-appearance: textfield;
+  width: calc(3.4rem * var(--canvas-label-scale));
+  outline: none;
+  text-align: center;
+}
+
+.canvas-corner-hover-input::-webkit-outer-spin-button,
+.canvas-corner-hover-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 .canvas-selection-box {
@@ -1133,6 +1171,17 @@
   backdrop-filter: blur(12px);
 }
 
+.canvas-stage--plain-labels .canvas-corner-hover-label.editing,
+.canvas-stage--plain-labels .canvas-corner-hover-label.invalid {
+  background: rgba(255, 255, 255, 0.96);
+  border-color: rgba(17, 17, 17, 0.12);
+  box-shadow: 0 10px 20px rgba(17, 17, 17, 0.08);
+  backdrop-filter: blur(12px);
+}
+
+.canvas-stage--plain-labels .canvas-wall-chip__menu:hover {
+  background: rgba(255, 255, 255, 0.9);
+}
 .furniture-rect.selected {
   fill: rgba(17, 17, 17, 0.08);
   stroke: rgba(17, 17, 17, 0.92);
@@ -1377,6 +1426,17 @@
 .text-area {
   min-height: 5rem;
   resize: vertical;
+}
+
+.number-input {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.number-input::-webkit-outer-spin-button,
+.number-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 .color-input {
