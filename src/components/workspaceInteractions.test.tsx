@@ -119,6 +119,76 @@ describe('workspace interactions', () => {
     })
   })
 
+  it('accepts reflex corner angles in the corner dialog', async () => {
+    const user = userEvent.setup()
+    const draft = createSeedState()
+    const room = draft.structures[0].floors[0].rooms[0]
+    const segment = room.segments[0]
+
+    renderEditor({ draft })
+
+    fireEvent.click(screen.getByTestId(`corner-hit-${segment.id}`))
+    expect(screen.getByRole('dialog')).toHaveTextContent('Edit corner angle')
+
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Turn direction' }), 'right')
+    const angleInput = screen.getByRole('spinbutton', { name: 'Angle (deg)' })
+    await user.clear(angleInput)
+    await user.type(angleInput, '270')
+    expect(screen.getByRole('dialog')).toHaveTextContent('270° right is equivalent to 90° left.')
+
+    await user.click(screen.getByRole('button', { name: 'Save angle' }))
+
+    await waitFor(() => {
+      const savedSegment = readSavedDraft().structures[0].floors[0].rooms[0].segments.find(
+        (item: { id: string }) => item.id === segment.id,
+      )
+      expect(savedSegment?.turn).toBe(90)
+    })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('rejects corner angles above 360 degrees in the corner dialog', async () => {
+    const user = userEvent.setup()
+    const draft = createSeedState()
+    const room = draft.structures[0].floors[0].rooms[0]
+    const segment = room.segments[0]
+
+    renderEditor({ draft })
+
+    fireEvent.click(screen.getByTestId(`corner-hit-${segment.id}`))
+    expect(screen.getByRole('dialog')).toHaveTextContent('Edit corner angle')
+
+    const angleInput = screen.getByRole('spinbutton', { name: 'Angle (deg)' })
+    await user.clear(angleInput)
+    await user.type(angleInput, '361')
+    await user.click(screen.getByRole('button', { name: 'Save angle' }))
+
+    expect(screen.getByRole('dialog')).toHaveTextContent('Enter an angle from 0 to 360 degrees.')
+    expect(readSavedDraft().structures[0].floors[0].rooms[0].segments[0].turn).toBe(90)
+  })
+
+  it('accepts reflex corner angles in inline canvas edits', async () => {
+    const draft = createSeedState()
+    const room = draft.structures[0].floors[0].rooms[0]
+    const segment = room.segments[0]
+    segment.turn = -90
+
+    renderEditor({ draft })
+
+    fireEvent.click(screen.getByTestId(`corner-label-${segment.id}`))
+    const inlineAngle = screen.getByRole('textbox', { name: 'Corner angle' })
+    fireEvent.change(inlineAngle, { target: { value: '270' } })
+    fireEvent.keyDown(inlineAngle, { key: 'Enter' })
+
+    await waitFor(() => {
+      const savedSegment = readSavedDraft().structures[0].floors[0].rooms[0].segments.find(
+        (item: { id: string }) => item.id === segment.id,
+      )
+      expect(savedSegment?.turn).toBe(90)
+    })
+    expect(screen.getByTestId(`corner-label-${segment.id}`)).toHaveTextContent('90°')
+  })
+
   it('cancels dialog edits and room dragging when escape is pressed', async () => {
     const user = userEvent.setup()
     const draft = createSeedState()

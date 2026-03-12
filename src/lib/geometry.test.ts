@@ -77,6 +77,9 @@ describe('validateRoomWalls', () => {
     expect(getTurnFromCornerAngle(180, 'left')).toBe(0)
     expect(getTurnFromCornerAngle(90, 'left')).toBe(90)
     expect(getTurnFromCornerAngle(135, 'right')).toBe(-45)
+    expect(getTurnFromCornerAngle(270, 'right')).toBe(90)
+    expect(getTurnFromCornerAngle(270, 'left')).toBe(-90)
+    expect(getTurnFromCornerAngle(360, 'right')).toBe(-180)
   })
 
   it('omits open-chain exit turns from room corners unless explicitly requested', () => {

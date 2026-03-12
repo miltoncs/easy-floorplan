@@ -374,14 +374,19 @@ export function getCornerAngleBetweenWalls(turn: number) {
 }
 
 export function getTurnFromCornerAngle(angleBetweenWalls: number, direction: 'left' | 'right' | 'straight') {
-  const normalizedAngle = clamp(angleBetweenWalls, 0, 180)
+  const normalizedAngle = clamp(angleBetweenWalls, 0, 360)
 
-  if (direction === 'straight' || normalizedAngle >= 179.5) {
+  if (direction === 'straight' || Math.abs(normalizedAngle - 180) < 0.5) {
     return 0
   }
 
-  const turnMagnitude = 180 - normalizedAngle
-  return direction === 'left' ? turnMagnitude : -turnMagnitude
+  const isFullSweep = normalizedAngle >= 359.5
+  const isReflexAngle = normalizedAngle > 180 && !isFullSweep
+  const canonicalAngle = isFullSweep ? 0 : isReflexAngle ? 360 - normalizedAngle : normalizedAngle
+  const turnMagnitude = 180 - canonicalAngle
+  const effectiveDirection = isReflexAngle ? (direction === 'left' ? 'right' : 'left') : direction
+
+  return effectiveDirection === 'left' ? turnMagnitude : -turnMagnitude
 }
 
 export function describeCornerAngle(turn: number) {

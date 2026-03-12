@@ -11,6 +11,8 @@ import { describeCornerAngle, formatFeet, getCornerAngleBetweenWalls, getRoomCor
 import { countVisibleCharacters, validateName } from '../lib/nameValidation'
 import { useEditor } from '../context/EditorContext'
 
+const CORNER_ANGLE_ERROR = 'Enter an angle from 0 to 360 degrees.'
+
 export function EditorDialogs() {
   const { draft, ui, actions } = useEditor()
 
@@ -95,8 +97,8 @@ export function EditorDialogs() {
     }
 
     const subtitle = corner.isExit
-      ? `Adjust the angle between ${corner.incomingLabel} and the next wall you will trace. 180° keeps them aligned.`
-      : `Adjust the angle at the corner between ${corner.incomingLabel} and ${corner.outgoingLabel}.`
+      ? `Adjust the angle between ${corner.incomingLabel} and the next wall you will trace. Enter 0° to 360°; 180° keeps them aligned.`
+      : `Adjust the angle at the corner between ${corner.incomingLabel} and ${corner.outgoingLabel}. Enter 0° to 360°; right 270° equals left 90°.`
 
     return (
       <DialogFrame
@@ -454,7 +456,13 @@ function CornerDialogBody({
       className="dialog-form"
       onSubmit={(event) => {
         event.preventDefault()
-        const angleBetweenWalls = Math.max(0, Math.min(180, readNumber(degrees, getCornerAngleBetweenWalls(corner.turn))))
+        const angleBetweenWalls = parseCornerAngleInput(degrees)
+
+        if (angleBetweenWalls === null) {
+          setError(CORNER_ANGLE_ERROR)
+          return
+        }
+
         const turn = getTurnFromCornerAngle(angleBetweenWalls, direction)
         const result = onSubmit({ turn })
 
@@ -495,7 +503,7 @@ function CornerDialogBody({
           <input
             ref={angleInputRef}
             className="number-input"
-            max="180"
+            max="360"
             min="0"
             step="1"
             type="number"
@@ -508,7 +516,7 @@ function CornerDialogBody({
         </label>
       </div>
       <div className="dialog-meta">
-        <span>{describeCornerAngle(getTurnFromCornerAngle(readNumber(degrees, getCornerAngleBetweenWalls(corner.turn)), direction))}</span>
+        <span>{describeCornerAngleInput(degrees, direction)}</span>
         {error ? <span className="validation-error">{error}</span> : null}
       </div>
       <div className="dialog-actions">
@@ -787,6 +795,40 @@ function RoomRotationDialogBody({
 function readNumber(value: string, fallback: number) {
   const numeric = Number(value)
   return Number.isFinite(numeric) ? numeric : fallback
+}
+
+function parseCornerAngleInput(value: string) {
+  const numeric = Number.parseFloat(value)
+
+  if (!Number.isFinite(numeric) || numeric < 0 || numeric > 360) {
+    return null
+  }
+
+  return numeric
+}
+
+function describeCornerAngleInput(value: string, direction: CornerDirection) {
+  const numeric = parseCornerAngleInput(value)
+
+  if (numeric === null) {
+    return CORNER_ANGLE_ERROR
+  }
+
+  if (direction === 'straight' || Math.abs(numeric - 180) < 0.5) {
+    return '180° straight'
+  }
+
+  const turn = getTurnFromCornerAngle(numeric, direction)
+
+  if (numeric > 180) {
+    return `${formatAngleValue(numeric)}° ${direction} is equivalent to ${formatAngleValue(getCornerAngleBetweenWalls(turn))}° ${turn > 0 ? 'left' : 'right'}.`
+  }
+
+  return describeCornerAngle(turn)
+}
+
+function formatAngleValue(value: number) {
+  return `${Math.round(value * 10) / 10}`
 }
 
 function formatDistanceFieldValue(value: number) {

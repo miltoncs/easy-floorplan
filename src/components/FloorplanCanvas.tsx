@@ -212,6 +212,7 @@ const MIN_HOVER_HITBOX_SCALE = 0.5
 const MAX_HOVER_HITBOX_SCALE = 1.35
 const SUGGESTION_ACTION_WIDTH_PX = 58
 const SUGGESTION_ACTION_HEIGHT_PX = 29
+const CORNER_ANGLE_ERROR = 'Enter an angle from 0 to 360 degrees.'
 const SUGGESTION_DASH_PATTERN = '10 7'
 
 export function FloorplanCanvas() {
@@ -1866,8 +1867,8 @@ export function FloorplanCanvas() {
     const value = nextValue ?? inlineCornerEditor.value
     const numericValue = value.trim() === '' ? Number.NaN : Number(value)
 
-    if (!Number.isFinite(numericValue)) {
-      const error = 'Enter an angle between 0 and 180 degrees.'
+    if (!Number.isFinite(numericValue) || numericValue < 0 || numericValue > 360) {
+      const error = CORNER_ANGLE_ERROR
       setInlineCornerEditor((current) =>
         current && current.target.segmentId === inlineCornerEditor.target.segmentId
           ? {
@@ -1880,8 +1881,7 @@ export function FloorplanCanvas() {
       return
     }
 
-    const angleBetweenWalls = Math.max(0, Math.min(180, numericValue))
-    const turn = getTurnFromCornerAngle(angleBetweenWalls, inlineCornerEditor.direction)
+    const turn = getTurnFromCornerAngle(numericValue, inlineCornerEditor.direction)
     const result = actions.updateCorner(
       {
         structureId: inlineCornerEditor.target.structureId,
