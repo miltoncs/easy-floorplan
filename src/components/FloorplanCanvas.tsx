@@ -198,6 +198,10 @@ const WHEEL_ZOOM_MULTIPLIER = 1.02
 const WHEEL_GESTURE_IDLE_MS = 160
 const WHEEL_GESTURE_ANCHOR_TOLERANCE_PX = 48
 const BUTTON_ZOOM_MULTIPLIER = 1.03
+const WALL_HIT_STROKE_WIDTH_PX = 14
+const CORNER_HIT_RADIUS_PX = 10
+const MIN_HOVER_HITBOX_SCALE = 0.5
+const MAX_HOVER_HITBOX_SCALE = 1.35
 const SUGGESTION_ACTION_WIDTH_PX = 58
 const SUGGESTION_ACTION_HEIGHT_PX = 29
 
@@ -252,6 +256,12 @@ export function FloorplanCanvas() {
 
   const shapeSuggestions = roomSuggestions.filter(hasSuggestedSegments)
   const canvasMetrics = getCanvasMetrics(viewBox, canvasSize)
+  const hoverHitboxScale = getHoverHitboxScale(ui.camera.zoom)
+  const wallHitStrokeWidthPx = WALL_HIT_STROKE_WIDTH_PX * hoverHitboxScale
+  const cornerHitRadius = getWorldLengthForScreenPixels(
+    canvasMetrics,
+    CORNER_HIT_RADIUS_PX * hoverHitboxScale,
+  )
   const canvasToolbarRect = getCanvasToolbarRect(viewBox, canvasMetrics)
   const canvasModeSwitchRect = getCanvasModeSwitchRect(viewBox, canvasMetrics)
   const canvasLegendRect = getCanvasLegendRect(viewBox, canvasMetrics)
@@ -1070,7 +1080,7 @@ export function FloorplanCanvas() {
                   cy={-corner.point.y}
                   data-corner-segment-id={corner.segmentId}
                   data-testid={`corner-hit-${corner.segmentId}`}
-                  r={0.95}
+                  r={cornerHitRadius}
                   onClick={() => handleCornerClick(target)}
                   onContextMenu={(event) => openContextMenu(event, target)}
                   onMouseEnter={() => actions.setHoveredTarget(target)}
@@ -2095,7 +2105,7 @@ export function FloorplanCanvas() {
                     .join(' ')}
                   data-testid={`wall-hit-${segment.id}`}
                   stroke="transparent"
-                  strokeWidth={14}
+                  strokeWidth={wallHitStrokeWidthPx}
                   vectorEffect="non-scaling-stroke"
                   x1={segment.start.x}
                   x2={segment.end.x}
@@ -2473,6 +2483,14 @@ function getCanvasMetrics(viewBox: { width: number; height: number }, canvasSize
     unitX: viewBox.width / widthPx,
     unitY: viewBox.height / heightPx,
   }
+}
+
+function getHoverHitboxScale(zoom: number) {
+  return clamp(1 / Math.max(zoom, 0.01), MIN_HOVER_HITBOX_SCALE, MAX_HOVER_HITBOX_SCALE)
+}
+
+function getWorldLengthForScreenPixels(metrics: CanvasMetrics, pixels: number) {
+  return pixels * Math.max(metrics.unitX, metrics.unitY)
 }
 
 function getCanvasToolbarRect(

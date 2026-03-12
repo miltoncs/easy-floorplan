@@ -917,6 +917,51 @@ describe('workspace interactions', () => {
     expect(cornerHit).not.toHaveClass('hovered')
   })
 
+  it('shrinks corner hover hitboxes as the canvas zooms in', async () => {
+    const draft = createSeedState()
+    const tinyWallLength = 5 / 12
+    const tinyRoom = createRoom({
+      id: 'tiny-room',
+      name: 'Tiny room',
+      anchor: { x: 0, y: 0 },
+      startHeading: 0,
+      segments: [
+        createSegment({ id: 'tiny-a', label: 'A', length: tinyWallLength, turn: 90 }),
+        createSegment({ id: 'tiny-b', label: 'B', length: tinyWallLength, turn: 90 }),
+        createSegment({ id: 'tiny-c', label: 'C', length: tinyWallLength, turn: 90 }),
+        createSegment({ id: 'tiny-d', label: 'D', length: tinyWallLength, turn: 90 }),
+      ],
+      furniture: [],
+    })
+
+    draft.structures[0].floors[0].rooms = [tinyRoom]
+    draft.selectedRoomId = tinyRoom.id
+    draft.selectedFurnitureId = null
+
+    renderEditor({ draft })
+
+    const svg = screen.getByLabelText('Interactive floorplan canvas')
+    mockCanvasRect(svg)
+
+    const firstCornerHit = screen.getByTestId('corner-hit-tiny-a')
+    const initialRadius = getCircleScreenRadius(firstCornerHit, svg)
+
+    zoomCanvasToMax(svg)
+
+    await waitFor(() => expect(screen.getByText('350%')).toBeInTheDocument())
+
+    const zoomedFirstCornerHit = screen.getByTestId('corner-hit-tiny-a')
+    const zoomedSecondCornerHit = screen.getByTestId('corner-hit-tiny-b')
+    const firstCornerCenter = getCircleScreenCenter(zoomedFirstCornerHit, svg)
+    const secondCornerCenter = getCircleScreenCenter(zoomedSecondCornerHit, svg)
+    const zoomedRadius = getCircleScreenRadius(zoomedFirstCornerHit, svg)
+
+    expect(zoomedRadius).toBeLessThan(initialRadius)
+    expect(Math.hypot(firstCornerCenter.x - secondCornerCenter.x, firstCornerCenter.y - secondCornerCenter.y)).toBeGreaterThan(
+      zoomedRadius * 2,
+    )
+  })
+
   it('toggles canvas wall length labels and shows a hovered wall length when hidden', async () => {
     const user = userEvent.setup()
     const draft = createSeedState()
@@ -939,6 +984,24 @@ describe('workspace interactions', () => {
     await user.click(screen.getByRole('checkbox', { name: 'Wall Lengths' }))
 
     expect(screen.getByTestId(`wall-label-${firstWall.id}`)).toBeInTheDocument()
+  })
+
+  it('shrinks wall hover hit widths as the canvas zooms in', async () => {
+    const draft = createSeedState()
+    const firstWall = draft.structures[0].floors[0].rooms[0].segments[0]
+
+    renderEditor({ draft })
+
+    const svg = screen.getByLabelText('Interactive floorplan canvas')
+    mockCanvasRect(svg)
+
+    const initialStrokeWidth = Number(screen.getByTestId(`wall-hit-${firstWall.id}`).getAttribute('stroke-width'))
+
+    zoomCanvasToMax(svg)
+
+    await waitFor(() => expect(screen.getByText('350%')).toBeInTheDocument())
+
+    expect(Number(screen.getByTestId(`wall-hit-${firstWall.id}`).getAttribute('stroke-width'))).toBeLessThan(initialStrokeWidth)
   })
 
   it('toggles canvas room and floor labels', async () => {
@@ -1340,6 +1403,18 @@ function mockCanvasRect(element: HTMLElement) {
   })
 }
 
+function zoomCanvasToMax(element: HTMLElement) {
+  for (let step = 0; step < 100; step += 1) {
+    fireEvent.wheel(element, {
+      bubbles: true,
+      cancelable: true,
+      clientX: 220,
+      clientY: 180,
+      deltaY: -120,
+    })
+  }
+}
+
 function getViewBoxCenter(element: HTMLElement) {
   const { x, y, width, height } = getViewBoxRect(element)
   return {
@@ -1361,6 +1436,21 @@ function getViewBoxRect(element: HTMLElement) {
 
 function getAnnotationLeft(testId: string) {
   return Number.parseFloat(screen.getByTestId(testId).getAttribute('style')?.match(/left:\s*([\d.]+)px/)?.[1] ?? '0')
+}
+
+function getCircleScreenCenter(element: HTMLElement, svg: HTMLElement) {
+  const { x, y, width, height } = getViewBoxRect(svg)
+
+  return {
+    x: ((Number(element.getAttribute('cx')) - x) / width) * 440,
+    y: ((Number(element.getAttribute('cy')) - y) / height) * 360,
+  }
+}
+
+function getCircleScreenRadius(element: HTMLElement, svg: HTMLElement) {
+  const { width } = getViewBoxRect(svg)
+
+  return (Number(element.getAttribute('r')) / width) * 440
 }
 
 function getGroupTranslate(testId: string) {
