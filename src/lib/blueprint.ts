@@ -138,13 +138,16 @@ export function ensureSelections(state: DraftState): DraftState {
   }
 
   const activeFloor = floors.find((floor) => floor.id === state.activeFloorId) ?? floors[0]
-  const selectedRoom = activeFloor.rooms.find((room) => room.id === state.selectedRoomId) ?? activeFloor.rooms[0]
+  const selectedRoom =
+    state.selectedRoomId === null
+      ? null
+      : activeFloor.rooms.find((room) => room.id === state.selectedRoomId) ?? activeFloor.rooms[0] ?? null
 
   return {
     ...state,
     activeStructureId: activeStructure.id,
     activeFloorId: activeFloor.id,
-    selectedRoomId: selectedRoom?.id ?? null,
+    selectedRoomId: state.selectedRoomId === null ? null : selectedRoom?.id ?? null,
     selectedFurnitureId:
       selectedRoom?.furniture.find((item) => item.id === state.selectedFurnitureId)?.id ?? null,
   }
@@ -169,7 +172,12 @@ export function findFloorById(state: DraftState, structureId: string, floorId: s
 
 export function findSelectedRoom(state: DraftState) {
   const floor = findActiveFloor(state)
-  return floor?.rooms.find((room) => room.id === state.selectedRoomId) ?? floor?.rooms[0]
+
+  if (state.selectedRoomId === null) {
+    return null
+  }
+
+  return floor?.rooms.find((room) => room.id === state.selectedRoomId) ?? floor?.rooms[0] ?? null
 }
 
 export function findRoomById(state: DraftState, structureId: string, floorId: string, roomId: string) {
@@ -255,7 +263,10 @@ export function selectTargetInDraft(state: DraftState, target: CanvasTarget) {
       }
       if (target.floorId) {
         state.activeFloorId = target.floorId
-    }
+      }
+      state.selectedRoomId = null
+      state.selectedFurnitureId = null
+      return
   }
 }
 

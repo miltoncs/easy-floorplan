@@ -141,6 +141,11 @@ export type EditorAction =
   | {
       type: 'dismissTransientUi'
     }
+  | {
+      type: 'clearSelection'
+      status?: string
+      focusedTarget?: CanvasTarget | null
+    }
 
 export function createInitialState(initialDraft?: DraftState): EditorState {
   const draft = ensureSelections(initialDraft ?? loadDraftState() ?? createSeedState())
@@ -433,6 +438,22 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
           dialog: null,
           contextMenu: null,
           pendingMeasurementStart: null,
+          selectionTargets: [],
+        },
+      }
+    case 'clearSelection':
+      return {
+        ...state,
+        draft: ensureSelections({
+          ...state.draft,
+          selectedRoomId: null,
+          selectedFurnitureId: null,
+        }),
+        ui: {
+          ...state.ui,
+          status: action.status ?? state.ui.status,
+          contextMenu: null,
+          focusedTarget: action.focusedTarget ?? null,
           selectionTargets: [],
         },
       }

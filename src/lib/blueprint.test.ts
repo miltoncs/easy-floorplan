@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { createFloor, createRoom, createSegment, getRoomLabelPoint, getRoomSuggestions, getViewBox } from './blueprint'
+import { createSeedState } from '../data/seed'
+import {
+  createFloor,
+  createRoom,
+  createSegment,
+  ensureSelections,
+  findSelectedRoom,
+  getRoomLabelPoint,
+  getRoomSuggestions,
+  getViewBox,
+  selectTargetInDraft,
+} from './blueprint'
 
 describe('blueprint camera framing', () => {
   it('expands the viewBox to match a wider canvas aspect ratio', () => {
@@ -74,5 +85,35 @@ describe('getRoomSuggestions', () => {
         title: 'Assume a rectangle and mirror the measured walls',
       }),
     )
+  })
+})
+
+describe('selection normalization', () => {
+  it('preserves an intentionally cleared room selection', () => {
+    const draft = createSeedState()
+    draft.selectedRoomId = null
+    draft.selectedFurnitureId = draft.structures[0].floors[0].rooms[0].furniture[0]?.id ?? null
+
+    const result = ensureSelections(draft)
+
+    expect(result.selectedRoomId).toBeNull()
+    expect(result.selectedFurnitureId).toBeNull()
+    expect(findSelectedRoom(result)).toBeNull()
+  })
+
+  it('clears room and furniture selection when the canvas target is selected', () => {
+    const draft = createSeedState()
+    const room = draft.structures[0].floors[0].rooms[0]
+    draft.selectedRoomId = room.id
+    draft.selectedFurnitureId = room.furniture[0]?.id ?? null
+
+    selectTargetInDraft(draft, {
+      kind: 'canvas',
+      structureId: draft.activeStructureId,
+      floorId: draft.activeFloorId,
+    })
+
+    expect(draft.selectedRoomId).toBeNull()
+    expect(draft.selectedFurnitureId).toBeNull()
   })
 })

@@ -1030,8 +1030,9 @@ export function FloorplanCanvas() {
               suppressCanvasClickRef.current = false
               return
             }
-            actions.clearSelectionTargets()
-            actions.setFocusedTarget(canvasTarget)
+            actions.clearSelection({
+              focusedTarget: canvasTarget,
+            })
           }}
           onContextMenu={(event) => openContextMenu(event, canvasTarget)}
           onPointerDown={(event) => {
@@ -1638,7 +1639,9 @@ export function FloorplanCanvas() {
 
   function openContextMenu(event: ReactMouseEvent<Element>, target: CanvasTarget) {
     event.preventDefault()
-    if (!isTargetSelected(ui.selectionTargets, target)) {
+    if (target.kind === 'canvas') {
+      actions.setFocusedTarget(target)
+    } else if (!isTargetSelected(ui.selectionTargets, target)) {
       actions.selectTarget(target)
     }
     actions.openContextMenu({

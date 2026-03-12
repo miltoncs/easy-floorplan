@@ -95,6 +95,7 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         dispatch({ type: 'dismissTransientUi' })
+        dispatch({ type: 'clearSelection' })
         return
       }
 
@@ -1368,6 +1369,12 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
         dispatch({ type: 'setStatus', status })
       }
     },
+    clearSelection: (options?: { status?: string; focusedTarget?: CanvasTarget | null }) =>
+      dispatch({
+        type: 'clearSelection',
+        status: options?.status,
+        focusedTarget: options?.focusedTarget,
+      }),
     setCamera: (camera: Omit<EditorUiState['camera'], 'frameBounds'> & { frameBounds?: EditorUiState['camera']['frameBounds'] }) =>
       dispatch({ type: 'setCamera', camera }),
     resetCamera: () => dispatch({ type: 'resetCamera' }),
