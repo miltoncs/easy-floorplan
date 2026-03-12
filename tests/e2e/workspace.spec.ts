@@ -150,6 +150,13 @@ test('supports direct canvas editing and route-based navigation', async ({ page 
   await page.getByRole('button', { name: 'Save wall' }).click()
   await expect(page.getByRole('dialog')).toBeHidden()
 
+  const cornerLabel = page.locator('[data-testid^="corner-label-"]').first()
+  await cornerLabel.dispatchEvent('click')
+  await page.getByRole('textbox', { name: 'Corner angle' }).fill('120')
+  await page.getByRole('textbox', { name: 'Corner angle' }).press('Enter')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(page.locator('[data-testid^="corner-label-"]').first()).toHaveText('120°')
+
   await page.goto('/detail')
   await page.waitForLoadState('networkidle')
   await expect(page.getByText('Selected room')).toBeVisible()

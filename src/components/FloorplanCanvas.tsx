@@ -26,7 +26,9 @@ import {
   clamp,
   formatCornerAngleBadge,
   formatFeet,
+  getCornerAngleBetweenWalls,
   getRoomCorners,
+  getTurnFromCornerAngle,
   midpoint,
   normalizeAngle,
   pointsToPath,
@@ -174,6 +176,15 @@ type InlineWallEditorState = {
   error: string | null
 }
 
+type InlineCornerDirection = 'left' | 'right'
+
+type InlineCornerEditorState = {
+  target: Extract<CanvasTarget, { kind: 'corner' }>
+  value: string
+  direction: InlineCornerDirection
+  error: string | null
+}
+
 type WheelGestureState = {
   clientX: number
   clientY: number
@@ -211,6 +222,7 @@ export function FloorplanCanvas() {
   const suppressTargetClickRef = useRef<CanvasTarget | null>(null)
   const suppressTargetClickTimerRef = useRef<number | null>(null)
   const inlineWallInputRef = useRef<HTMLInputElement | null>(null)
+  const inlineCornerInputRef = useRef<HTMLInputElement | null>(null)
   const annotationPlacementRef = useRef<Record<string, number>>({})
   const [dragState, setDragState] = useState<DragState>(null)
   const [isDragging, setIsDragging] = useState(false)
@@ -218,6 +230,7 @@ export function FloorplanCanvas() {
   const [dragViewBounds, setDragViewBounds] = useState<Bounds | null>(null)
   const [selectionBox, setSelectionBox] = useState<CanvasRect | null>(null)
   const [inlineWallEditor, setInlineWallEditor] = useState<InlineWallEditorState | null>(null)
+  const [inlineCornerEditor, setInlineCornerEditor] = useState<InlineCornerEditorState | null>(null)
   const [viewRotationQuarterTurns, setViewRotationQuarterTurns] = useState(0)
   const canvasAspectRatio =
     canvasSize.width > 0 && canvasSize.height > 0 ? canvasSize.width / canvasSize.height : undefined
@@ -343,6 +356,7 @@ export function FloorplanCanvas() {
         selectedRoomGeometry,
         showAll: draft.showAngleLabels && draft.editorMode !== 'furniture',
         hoveredTarget: ui.hoveredTarget,
+        editingSegmentId: inlineCornerEditor?.target.segmentId ?? null,
         viewBox,
         canvasMetrics,
         viewRotationQuarterTurns,
@@ -513,7 +527,16 @@ export function FloorplanCanvas() {
 
     inlineWallInputRef.current?.focus()
     inlineWallInputRef.current?.select()
-  }, [inlineWallEditor])
+  }, [inlineWallEditor?.segmentId])
+
+  useEffect(() => {
+    if (!inlineCornerEditor) {
+      return
+    }
+
+    inlineCornerInputRef.current?.focus()
+    inlineCornerInputRef.current?.select()
+  }, [inlineCornerEditor?.target.segmentId])
 
   useEffect(() => {
     if (showSimplifiedDragPreview) {
@@ -535,6 +558,7 @@ export function FloorplanCanvas() {
 
   const cancelActiveInteraction = () => {
     setInlineWallEditor(null)
+    setInlineCornerEditor(null)
 
     const activeDrag = dragRef.current
     if (!activeDrag) {
@@ -1042,12 +1066,13 @@ export function FloorplanCanvas() {
                   className="corner-hit"
                   cx={corner.point.x}
                   cy={-corner.point.y}
+                  data-corner-segment-id={corner.segmentId}
                   data-testid={`corner-hit-${corner.segmentId}`}
                   r={0.95}
                   onClick={() => handleCornerClick(target)}
                   onContextMenu={(event) => openContextMenu(event, target)}
                   onMouseEnter={() => actions.setHoveredTarget(target)}
-                  onMouseLeave={() => actions.setHoveredTarget(null)}
+                  onMouseLeave={(event) => handleCornerHoverMouseLeave(event, target)}
                 />
               )
             })
@@ -1157,15 +1182,62 @@ export function FloorplanCanvas() {
                   data-testid={`corner-hover-arc-${cornerOverlay.target.segmentId}`}
                 />
               </svg>
-              <div
-                className="canvas-corner-hover-label"
-                style={{
-                  left: `${cornerOverlay.labelPoint.x}px`,
-                  top: `${cornerOverlay.labelPoint.y}px`,
-                }}
-              >
-                {cornerOverlay.text}
-              </div>
+              {inlineCornerEditor?.target.segmentId === cornerOverlay.target.segmentId ? (
+                <input
+                  ref={inlineCornerInputRef}
+                  aria-label="Corner angle"
+                  className={[
+                    'canvas-corner-hover-label',
+                    'canvas-corner-hover-input',
+                    'editing',
+                    inlineCornerEditor.error ? 'invalid' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                  data-corner-segment-id={cornerOverlay.target.segmentId}
+                  data-testid={`corner-label-${cornerOverlay.target.segmentId}`}
+                  inputMode="numeric"
+                  style={{
+                    left: `${cornerOverlay.labelPoint.x}px`,
+                    top: `${cornerOverlay.labelPoint.y}px`,
+                  }}
+                  type="text"
+                  value={inlineCornerEditor.value}
+                  onBlur={(event) => commitInlineCornerEdit(event.currentTarget.value)}
+                  onChange={(event) =>
+                    setInlineCornerEditor((current) =>
+                      current && current.target.segmentId === cornerOverlay.target.segmentId
+                        ? {
+                            ...current,
+                            value: event.target.value,
+                            error: null,
+                          }
+                        : current,
+                    )
+                  }
+                  onContextMenu={(event) => openContextMenu(event, cornerOverlay.target)}
+                  onKeyDown={handleInlineCornerInputKeyDown}
+                  onMouseEnter={() => actions.setHoveredTarget(cornerOverlay.target)}
+                  onMouseLeave={(event) => handleCornerHoverMouseLeave(event, cornerOverlay.target)}
+                />
+              ) : (
+                <button
+                  className="canvas-corner-hover-label canvas-corner-hover-button"
+                  data-corner-segment-id={cornerOverlay.target.segmentId}
+                  data-testid={`corner-label-${cornerOverlay.target.segmentId}`}
+                  style={{
+                    left: `${cornerOverlay.labelPoint.x}px`,
+                    top: `${cornerOverlay.labelPoint.y}px`,
+                  }}
+                  type="button"
+                  onClick={() => startInlineCornerEdit(cornerOverlay.target)}
+                  onContextMenu={(event) => openContextMenu(event, cornerOverlay.target)}
+                  onMouseEnter={() => actions.setHoveredTarget(cornerOverlay.target)}
+                  onMouseLeave={(event) => handleCornerHoverMouseLeave(event, cornerOverlay.target)}
+                >
+                  {cornerOverlay.text}
+                </button>
+              )}
             </div>
           ))
         : null}
@@ -1496,6 +1568,7 @@ export function FloorplanCanvas() {
 
     actions.selectTarget(target)
     setInlineWallEditor(null)
+    setInlineCornerEditor(null)
     actions.openWallDialog({
       structureId: target.structureId,
       floorId: target.floorId,
@@ -1510,6 +1583,8 @@ export function FloorplanCanvas() {
     }
 
     actions.selectTarget(target)
+    setInlineWallEditor(null)
+    setInlineCornerEditor(null)
     actions.openCornerDialog({
       structureId: target.structureId,
       floorId: target.floorId,
@@ -1572,6 +1647,7 @@ export function FloorplanCanvas() {
     }
 
     actions.selectTarget(target)
+    setInlineCornerEditor(null)
     setInlineWallEditor({
       segmentId: target.segmentId,
       value: formatEditableLength(segment.length),
@@ -1579,6 +1655,33 @@ export function FloorplanCanvas() {
     })
   }
 
+  function startInlineCornerEdit(target: Extract<CanvasTarget, { kind: 'corner' }>) {
+    const room = findRoomById(draft, target.structureId, target.floorId, target.roomId)
+    const corner = room ? getRoomCorners(room).find((item) => item.segmentId === target.segmentId) ?? null : null
+
+    if (!corner) {
+      return
+    }
+
+    actions.selectTarget(target)
+    setInlineWallEditor(null)
+    setInlineCornerEditor({
+      target,
+      value: String(getCornerAngleBetweenWalls(corner.turn)),
+      direction: corner.turn < -0.5 ? 'right' : 'left',
+      error: null,
+    })
+  }
+
+  function openFullWallEditor(target: CanvasTarget) {
+    if (target.kind !== 'wall') {
+      return
+    }
+
+    setInlineWallEditor(null)
+    setInlineCornerEditor(null)
+    handleWallClick(target)
+  }
   function commitInlineWallEdit(nextValue?: string) {
     if (!inlineWallEditor) {
       return
@@ -1654,6 +1757,58 @@ export function FloorplanCanvas() {
     setInlineWallEditor(null)
   }
 
+  function commitInlineCornerEdit(nextValue?: string) {
+    if (!inlineCornerEditor) {
+      return
+    }
+
+    const value = nextValue ?? inlineCornerEditor.value
+    const numericValue = value.trim() === '' ? Number.NaN : Number(value)
+
+    if (!Number.isFinite(numericValue)) {
+      const error = 'Enter an angle between 0 and 180 degrees.'
+      setInlineCornerEditor((current) =>
+        current && current.target.segmentId === inlineCornerEditor.target.segmentId
+          ? {
+              ...current,
+              error,
+            }
+          : current,
+      )
+      actions.setStatus(error)
+      return
+    }
+
+    const angleBetweenWalls = Math.max(0, Math.min(180, numericValue))
+    const turn = getTurnFromCornerAngle(angleBetweenWalls, inlineCornerEditor.direction)
+    const result = actions.updateCorner(
+      {
+        structureId: inlineCornerEditor.target.structureId,
+        floorId: inlineCornerEditor.target.floorId,
+        roomId: inlineCornerEditor.target.roomId,
+        segmentId: inlineCornerEditor.target.segmentId,
+      },
+      { turn },
+    )
+
+    if (!result.valid) {
+      setInlineCornerEditor((current) =>
+        current && current.target.segmentId === inlineCornerEditor.target.segmentId
+          ? {
+              ...current,
+              error: result.error,
+            }
+          : current,
+      )
+      if (result.error) {
+        actions.setStatus(result.error)
+      }
+      return
+    }
+
+    setInlineCornerEditor(null)
+  }
+
   function handleInlineWallInputKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
     if (event.key === 'Enter') {
       event.preventDefault()
@@ -1665,6 +1820,34 @@ export function FloorplanCanvas() {
       event.preventDefault()
       setInlineWallEditor(null)
     }
+  }
+
+  function handleInlineCornerInputKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      commitInlineCornerEdit(event.currentTarget.value)
+      return
+    }
+
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      setInlineCornerEditor(null)
+    }
+  }
+
+  function handleCornerHoverMouseLeave(
+    event: ReactMouseEvent<Element>,
+    target: Extract<CanvasTarget, { kind: 'corner' }>,
+  ) {
+    if (matchesCornerHoverElement(event.relatedTarget, target.segmentId)) {
+      return
+    }
+
+    actions.setHoveredTarget(null)
+  }
+
+  function matchesCornerHoverElement(target: EventTarget | null, segmentId: string) {
+    return target instanceof HTMLElement && target.dataset.cornerSegmentId === segmentId
   }
 
   function beginAnnotationDrag(event: ReactPointerEvent<HTMLButtonElement>, annotation: PlacedCanvasAnnotation) {
@@ -3209,6 +3392,7 @@ function getVisibleCornerOverlays({
   selectedRoomGeometry,
   showAll,
   hoveredTarget,
+  editingSegmentId,
   viewBox,
   canvasMetrics,
   viewRotationQuarterTurns,
@@ -3219,6 +3403,7 @@ function getVisibleCornerOverlays({
   selectedRoomGeometry: ReturnType<typeof roomToGeometry> | null
   showAll: boolean
   hoveredTarget: CanvasTarget | null
+  editingSegmentId: string | null
   viewBox: { x: number; y: number; width: number; height: number }
   canvasMetrics: CanvasMetrics
   viewRotationQuarterTurns: number
@@ -3244,27 +3429,34 @@ function getVisibleCornerOverlays({
       .filter((overlay): overlay is HoverCornerOverlay => Boolean(overlay))
   }
 
+  const visibleSegmentIds = new Set<string>()
+
   if (
-    !hoveredTarget ||
-    hoveredTarget.kind !== 'corner' ||
-    hoveredTarget.floorId !== activeFloorId ||
-    hoveredTarget.roomId !== selectedRoom.id
+    hoveredTarget?.kind === 'corner' &&
+    hoveredTarget.floorId === activeFloorId &&
+    hoveredTarget.roomId === selectedRoom.id
   ) {
-    return []
+    visibleSegmentIds.add(hoveredTarget.segmentId)
   }
 
-  const overlay = buildCornerHoverOverlay({
-    activeStructureId,
-    activeFloorId,
-    selectedRoom,
-    selectedRoomGeometry,
-    segmentId: hoveredTarget.segmentId,
-    viewBox,
-    canvasMetrics,
-    viewRotationQuarterTurns,
-  })
+  if (editingSegmentId) {
+    visibleSegmentIds.add(editingSegmentId)
+  }
 
-  return overlay ? [overlay] : []
+  return Array.from(visibleSegmentIds)
+    .map((segmentId) =>
+      buildCornerHoverOverlay({
+        activeStructureId,
+        activeFloorId,
+        selectedRoom,
+        selectedRoomGeometry,
+        segmentId,
+        viewBox,
+        canvasMetrics,
+        viewRotationQuarterTurns,
+      }),
+    )
+    .filter((overlay): overlay is HoverCornerOverlay => Boolean(overlay))
 }
 
 function placeCanvasAnnotations(
