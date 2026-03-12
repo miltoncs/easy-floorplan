@@ -199,7 +199,6 @@ export function FloorplanCanvas() {
     selectedRoom,
     selectedRoomGeometry,
     ui,
-    viewBounds,
     visibleFloors,
     actions,
   } = useEditor()
@@ -370,6 +369,9 @@ export function FloorplanCanvas() {
     }
 
     const rect = svgRef.current.getBoundingClientRect()
+    if (rect.width <= 0 || rect.height <= 0) {
+      return
+    }
     const pointerRatioX = (clientX - rect.left) / rect.width
     const pointerRatioY = (clientY - rect.top) / rect.height
     const currentViewPoint = screenToBaseSvgPoint(clientX, clientY, rect, viewBox, viewRotationQuarterTurns)
@@ -377,7 +379,7 @@ export function FloorplanCanvas() {
     const clampedZoom = Math.max(0.45, Math.min(3.5, nextZoom))
     actions.setCamera(
       getCameraForScreenAnchor(
-        viewBounds,
+        ui.camera.frameBounds,
         clampedZoom,
         {
           x: pointerRatioX,
@@ -388,6 +390,22 @@ export function FloorplanCanvas() {
         viewRotationQuarterTurns,
       ),
     )
+  })
+
+  const getBoundedWheelClientPoint = useEffectEvent((clientX: number, clientY: number) => {
+    if (!svgRef.current) {
+      return null
+    }
+
+    const rect = svgRef.current.getBoundingClientRect()
+    if (rect.width <= 0 || rect.height <= 0) {
+      return null
+    }
+
+    return {
+      clientX: clamp(clientX, rect.left, rect.right),
+      clientY: clamp(clientY, rect.top, rect.bottom),
+    }
   })
 
   const getWheelZoomAnchor = useEffectEvent((clientX: number, clientY: number) => {
@@ -439,9 +457,14 @@ export function FloorplanCanvas() {
         return
       }
 
+      const boundedPointer = getBoundedWheelClientPoint(event.clientX, event.clientY)
+      if (!boundedPointer) {
+        return
+      }
+
       event.preventDefault()
       event.stopPropagation()
-      const anchor = getWheelZoomAnchor(event.clientX, event.clientY)
+      const anchor = getWheelZoomAnchor(boundedPointer.clientX, boundedPointer.clientY)
       applyWheelZoom(anchor.clientX, anchor.clientY, event.deltaY)
     }
 

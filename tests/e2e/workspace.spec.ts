@@ -58,6 +58,24 @@ test('supports direct canvas editing and route-based navigation', async ({ page 
   await page.mouse.wheel(0, 400)
   await expect(page.locator('.toolbar-pill').first()).toHaveText('100%')
 
+  const viewBoxBeforeOutOfBoundsWheel = parseViewBox(await canvas.getAttribute('viewBox'))
+  await canvas.dispatchEvent('wheel', {
+    bubbles: true,
+    cancelable: true,
+    clientX: canvasBox.x + canvasBox.width / 2,
+    clientY: canvasBox.y + canvasBox.height + 4000,
+    deltaY: -400,
+  })
+  await expect(page.locator('.toolbar-pill').first()).toHaveText('102%')
+  const outOfBoundsZoomViewBox = parseViewBox(await canvas.getAttribute('viewBox'))
+  const centerYBeforeOutOfBoundsWheel = viewBoxBeforeOutOfBoundsWheel.y + viewBoxBeforeOutOfBoundsWheel.height / 2
+  const centerYAfterOutOfBoundsWheel = outOfBoundsZoomViewBox.y + outOfBoundsZoomViewBox.height / 2
+  expect(Math.abs(centerYAfterOutOfBoundsWheel - centerYBeforeOutOfBoundsWheel)).toBeLessThan(2)
+
+  await page.mouse.move(canvasBox.x + canvasBox.width / 2, canvasBox.y + canvasBox.height - 4)
+  await page.mouse.wheel(0, 400)
+  await expect(page.locator('.toolbar-pill').first()).toHaveText('100%')
+
   const draftBeforeDrag = await page.evaluate(() => JSON.parse(window.localStorage.getItem('incremental-blueprint/v1') || 'null'))
   const kitchen = draftBeforeDrag.structures[0].floors[0].rooms.find((room: { id: string; name: string; anchor: { y: number } }) => room.name === 'Kitchen')
   if (!kitchen) {
@@ -94,6 +112,23 @@ test('supports direct canvas editing and route-based navigation', async ({ page 
     .poll(async () => (await kitchenFill.boundingBox())?.y ?? null)
     .toBeLessThan(kitchenFillBox.y - 80)
   await expect(page.getByRole('dialog')).toHaveCount(0)
+
+  const viewBoxBeforePostDragZoom = parseViewBox(await canvas.getAttribute('viewBox'))
+  await page.mouse.move(canvasBox.x + canvasBox.width / 2, canvasBox.y + canvasBox.height / 2)
+  await page.mouse.wheel(0, -400)
+  await expect(page.locator('.toolbar-pill').first()).toHaveText('102%')
+  const viewBoxAfterPostDragZoom = parseViewBox(await canvas.getAttribute('viewBox'))
+  expect(viewBoxAfterPostDragZoom.x + viewBoxAfterPostDragZoom.width / 2).toBeCloseTo(
+    viewBoxBeforePostDragZoom.x + viewBoxBeforePostDragZoom.width / 2,
+    1,
+  )
+  expect(viewBoxAfterPostDragZoom.y + viewBoxAfterPostDragZoom.height / 2).toBeCloseTo(
+    viewBoxBeforePostDragZoom.y + viewBoxBeforePostDragZoom.height / 2,
+    1,
+  )
+
+  await page.mouse.wheel(0, 400)
+  await expect(page.locator('.toolbar-pill').first()).toHaveText('100%')
 
   await roomLabel.click({ force: true })
   await expect(page.getByRole('dialog')).toContainText('Rename room')

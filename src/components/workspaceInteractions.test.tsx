@@ -304,6 +304,53 @@ describe('workspace interactions', () => {
     expect(getViewBoxRect(svg)).toEqual(viewBoxBeforeDelete)
   })
 
+  it('keeps wheel zoom centered after moving a room', async () => {
+    const draft = createSeedState()
+    const room = draft.structures[0].floors[0].rooms[0]
+
+    renderEditor({ draft })
+
+    const svg = screen.getByLabelText('Interactive floorplan canvas')
+    mockCanvasRect(svg)
+
+    const roomLabel = screen.getByTestId(`room-label-${room.id}`)
+    const initialRoomLeft = getAnnotationLeft(`room-label-${room.id}`)
+
+    fireEvent.pointerDown(roomLabel, {
+      button: 0,
+      pointerId: 18,
+      clientX: 160,
+      clientY: 140,
+    })
+    fireEvent.pointerMove(window, {
+      pointerId: 18,
+      clientX: 188,
+      clientY: 140,
+    })
+    fireEvent.pointerUp(window, {
+      pointerId: 18,
+      clientX: 188,
+      clientY: 140,
+    })
+
+    await waitFor(() => expect(getAnnotationLeft(`room-label-${room.id}`)).toBeGreaterThan(initialRoomLeft))
+
+    const centerBeforeWheel = getViewBoxCenter(svg)
+    svg.dispatchEvent(new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 220,
+      clientY: 180,
+      deltaY: -120,
+    }))
+
+    await waitFor(() => expect(screen.getByText('102%')).toBeInTheDocument())
+
+    const centerAfterWheel = getViewBoxCenter(svg)
+    expect(centerAfterWheel.x).toBeCloseTo(centerBeforeWheel.x, 5)
+    expect(centerAfterWheel.y).toBeCloseTo(centerBeforeWheel.y, 5)
+  })
+
   it('keeps wall clicks editable while allowing wall drags to move the connected room outline', async () => {
     const user = userEvent.setup()
     const draft = createSeedState()
@@ -589,6 +636,47 @@ describe('workspace interactions', () => {
     const rightZoomCenter = getViewBoxCenter(svg)
     expect(rightZoomCenter.x).toBeGreaterThan(initialCenter.x)
     expect(rightZoomCenter.x).toBeLessThan(initialCenter.x + 2)
+  })
+
+  it('clamps wheel zoom anchors to the canvas bounds during wall drags', async () => {
+    const draft = createSeedState()
+    const room = draft.structures[0].floors[0].rooms[0]
+    const wall = room.segments[0]
+
+    renderEditor({ draft })
+
+    const svg = screen.getByLabelText('Interactive floorplan canvas')
+    mockCanvasRect(svg)
+    const initialCenter = getViewBoxCenter(svg)
+
+    fireEvent.pointerDown(screen.getByTestId(`wall-hit-${wall.id}`), {
+      button: 0,
+      pointerId: 44,
+      clientX: 144,
+      clientY: 128,
+    })
+
+    const wheelEvent = new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 220,
+      clientY: 4000,
+      deltaY: -120,
+    })
+
+    svg.dispatchEvent(wheelEvent)
+
+    await waitFor(() => expect(screen.getByText('102%')).toBeInTheDocument())
+
+    const finalCenter = getViewBoxCenter(svg)
+    expect(wheelEvent.defaultPrevented).toBe(true)
+    expect(Math.abs(finalCenter.y - initialCenter.y)).toBeLessThan(2)
+
+    fireEvent.pointerUp(window, {
+      pointerId: 44,
+      clientX: 144,
+      clientY: 128,
+    })
   })
 
   it('adds a wall from the start-side open joint of a lone wall', async () => {
