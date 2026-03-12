@@ -1155,6 +1155,10 @@
   border-color: rgba(17, 17, 17, 0.22);
 }
 
+.canvas-annotation.editing:hover {
+  transform: translate(-50%, -50%);
+}
+
 .canvas-annotation--floor {
   justify-content: flex-start;
   background: rgba(255, 255, 255, 0.9);
@@ -1183,6 +1187,32 @@
   font-family: 'IBM Plex Mono', monospace;
   font-size: calc(var(--canvas-label-font-size) * 0.9);
   letter-spacing: 0.04em;
+}
+
+.canvas-annotation.editing {
+  padding:
+    calc(0.12rem * var(--canvas-label-scale))
+    calc(0.18rem * var(--canvas-label-scale))
+    calc(0.12rem * var(--canvas-label-scale))
+    calc(0.18rem * var(--canvas-label-scale));
+}
+
+.canvas-annotation.invalid {
+  border-color: rgba(141, 63, 54, 0.36);
+  box-shadow: 0 10px 20px rgba(141, 63, 54, 0.14);
+}
+
+.canvas-annotation__input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  line-height: inherit;
+  outline: none;
+  padding: calc(0.16rem * var(--canvas-label-scale)) calc(0.28rem * var(--canvas-label-scale));
+  text-align: center;
 }
 
 .canvas-wall-chip {
@@ -1256,6 +1286,8 @@
   box-shadow: none;
 }
 
+.canvas-stage--plain-labels .canvas-annotation.editing,
+.canvas-stage--plain-labels .canvas-annotation.invalid,
 .canvas-stage--plain-labels .canvas-wall-chip.editing,
 .canvas-stage--plain-labels .canvas-wall-chip.invalid {
   background: rgba(255, 255, 255, 0.96);

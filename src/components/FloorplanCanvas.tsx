@@ -22,6 +22,7 @@ import {
 import { MAX_CAMERA_ZOOM, MIN_CAMERA_ZOOM } from '../lib/camera'
 import { parseDistanceInput } from '../lib/distance'
 import { MODE_LABELS } from '../lib/editorModes'
+import { validateName } from '../lib/nameValidation'
 import {
   addPolar,
   clamp,
@@ -52,6 +53,7 @@ type DragState =
     }
   | {
       kind: 'room'
+      source: 'annotation' | 'room'
       pointerId: number
       clientX: number
       clientY: number
@@ -194,6 +196,14 @@ type InlineWallEditorState = {
   error: string | null
 }
 
+type InlineRoomEditorState = {
+  structureId: string
+  floorId: string
+  roomId: string
+  value: string
+  error: string | null
+}
+
 type InlineCornerDirection = 'left' | 'right'
 
 type InlineCornerEditorState = {
@@ -248,6 +258,7 @@ export function FloorplanCanvas() {
   const suppressCanvasClickRef = useRef(false)
   const suppressTargetClickRef = useRef<CanvasTarget | null>(null)
   const suppressTargetClickTimerRef = useRef<number | null>(null)
+  const inlineRoomInputRef = useRef<HTMLInputElement | null>(null)
   const inlineWallInputRef = useRef<HTMLInputElement | null>(null)
   const inlineCornerInputRef = useRef<HTMLInputElement | null>(null)
   const annotationPlacementRef = useRef<Record<string, number>>({})
@@ -256,6 +267,7 @@ export function FloorplanCanvas() {
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 })
   const [dragViewBounds, setDragViewBounds] = useState<Bounds | null>(null)
   const [selectionBox, setSelectionBox] = useState<CanvasRect | null>(null)
+  const [inlineRoomEditor, setInlineRoomEditor] = useState<InlineRoomEditorState | null>(null)
   const [inlineWallEditor, setInlineWallEditor] = useState<InlineWallEditorState | null>(null)
   const [inlineCornerEditor, setInlineCornerEditor] = useState<InlineCornerEditorState | null>(null)
   const [viewRotationQuarterTurns, setViewRotationQuarterTurns] = useState(0)
@@ -266,6 +278,7 @@ export function FloorplanCanvas() {
   const viewBox = getViewBox(rotatedViewBounds, ui.camera.zoom, ui.camera.offset, canvasAspectRatio)
   const viewRotationTransform = getViewRotationTransform(viewBox, viewRotationQuarterTurns)
   const labelScale = draft.labelFontSize / DEFAULT_LABEL_FONT_SIZE
+  const inlineRoomEditorRoomId = inlineRoomEditor?.roomId
   const inlineWallEditorSegmentId = inlineWallEditor?.segmentId
   const inlineCornerEditorSegmentId = inlineCornerEditor?.target.segmentId
   const showSimplifiedDragPreview = Boolean(
@@ -563,6 +576,15 @@ export function FloorplanCanvas() {
   }, [])
 
   useEffect(() => {
+    if (!inlineRoomEditorRoomId) {
+      return
+    }
+
+    inlineRoomInputRef.current?.focus()
+    inlineRoomInputRef.current?.select()
+  }, [inlineRoomEditorRoomId])
+
+  useEffect(() => {
     if (!inlineWallEditorSegmentId) {
       return
     }
@@ -599,6 +621,7 @@ export function FloorplanCanvas() {
   }, [])
 
   const cancelActiveInteraction = () => {
+    setInlineRoomEditor(null)
     setInlineWallEditor(null)
     setInlineCornerEditor(null)
 
@@ -885,11 +908,17 @@ export function FloorplanCanvas() {
     }
 
     if (completedDrag.kind === 'room') {
-      actions.openRenameDialog('room', {
-        structureId: completedDrag.structureId,
-        floorId: completedDrag.floorId,
-        roomId: completedDrag.roomId,
-      })
+      if (completedDrag.source === 'annotation') {
+        startInlineRoomEdit({
+          kind: 'room',
+          structureId: completedDrag.structureId,
+          floorId: completedDrag.floorId,
+          roomId: completedDrag.roomId,
+        })
+        return
+      }
+
+      actions.selectRoom(completedDrag.structureId, completedDrag.floorId, completedDrag.roomId)
       return
     }
 
@@ -973,7 +1002,8 @@ export function FloorplanCanvas() {
         viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`}
         onKeyDown={(event) => {
           if (event.key === 'Enter' && selectedRoom && activeStructure && activeFloor) {
-            actions.openRenameDialog('room', {
+            startInlineRoomEdit({
+              kind: 'room',
               structureId: activeStructure.id,
               floorId: activeFloor.id,
               roomId: selectedRoom.id,
@@ -1573,6 +1603,72 @@ export function FloorplanCanvas() {
                     </div>
                   )
                 })()
+              ) : annotation.kind === 'room' && annotation.target.kind === 'room' ? (
+                (() => {
+                  const roomTarget = annotation.target
+                  const editing = inlineRoomEditor?.roomId === roomTarget.roomId
+                  const invalid = editing && Boolean(inlineRoomEditor?.error)
+
+                  return editing ? (
+                    <div
+                      className={[className, editing ? 'editing' : '', invalid ? 'invalid' : '']
+                        .filter(Boolean)
+                        .join(' ')}
+                      key={`${annotation.kind}-${annotation.id}`}
+                      onContextMenu={(event) => openContextMenu(event, roomTarget)}
+                      onMouseEnter={() => actions.setHoveredTarget(roomTarget)}
+                      onMouseLeave={() => actions.setHoveredTarget(null)}
+                      style={{
+                        left: `${annotation.position.x}px`,
+                        top: `${annotation.position.y}px`,
+                        minWidth: `${annotation.widthPx}px`,
+                      }}
+                    >
+                      <input
+                        ref={inlineRoomInputRef}
+                        aria-label="Room name"
+                        className="canvas-annotation__input"
+                        data-testid={`room-label-${annotation.id}`}
+                        maxLength={512}
+                        type="text"
+                        value={inlineRoomEditor?.value ?? ''}
+                        onBlur={(event) => commitInlineRoomEdit(event.currentTarget.value)}
+                        onChange={(event) =>
+                          setInlineRoomEditor((current) =>
+                            current && current.roomId === roomTarget.roomId
+                              ? {
+                                  ...current,
+                                  value: event.target.value,
+                                  error: null,
+                                }
+                              : current,
+                          )
+                        }
+                        onKeyDown={handleInlineRoomInputKeyDown}
+                      />
+                    </div>
+                  ) : (
+                    <button
+                      className={className}
+                      data-testid={`${annotation.kind}-label-${annotation.id}`}
+                      key={`${annotation.kind}-${annotation.id}`}
+                      onClick={() => handleAnnotationClick(annotation)}
+                      onContextMenu={(event) => openContextMenu(event, annotation.target)}
+                      onMouseEnter={() => actions.setHoveredTarget(annotation.target)}
+                      onMouseLeave={() => actions.setHoveredTarget(null)}
+                      onPointerDown={(event) => beginAnnotationDrag(event, annotation)}
+                      style={{
+                        left: `${annotation.position.x}px`,
+                        top: `${annotation.position.y}px`,
+                        minWidth: `${annotation.widthPx}px`,
+                      }}
+                      tabIndex={-1}
+                      type="button"
+                    >
+                      {annotation.text}
+                    </button>
+                  )
+                })()
               ) : (
                 <button
                   className={className}
@@ -1696,6 +1792,7 @@ export function FloorplanCanvas() {
     }
 
     actions.selectTarget(target)
+    setInlineRoomEditor(null)
     setInlineWallEditor(null)
     setInlineCornerEditor(null)
     actions.openWallDialog({
@@ -1712,6 +1809,7 @@ export function FloorplanCanvas() {
     }
 
     actions.selectTarget(target)
+    setInlineRoomEditor(null)
     setInlineWallEditor(null)
     setInlineCornerEditor(null)
     actions.openCornerDialog({
@@ -1732,12 +1830,7 @@ export function FloorplanCanvas() {
         actions.selectFloor(annotation.target.structureId, annotation.target.floorId)
         return
       case 'room':
-        actions.selectRoom(annotation.target.structureId, annotation.target.floorId, annotation.target.roomId)
-        actions.openRenameDialog('room', {
-          structureId: annotation.target.structureId,
-          floorId: annotation.target.floorId,
-          roomId: annotation.target.roomId,
-        })
+        startInlineRoomEdit(annotation.target)
         return
       case 'furniture':
         actions.selectFurniture(
@@ -1764,6 +1857,25 @@ export function FloorplanCanvas() {
     }
   }
 
+  function startInlineRoomEdit(target: Extract<CanvasTarget, { kind: 'room' }>) {
+    const room = findRoomById(draft, target.structureId, target.floorId, target.roomId)
+
+    if (!room) {
+      return
+    }
+
+    actions.selectRoom(target.structureId, target.floorId, target.roomId)
+    setInlineWallEditor(null)
+    setInlineCornerEditor(null)
+    setInlineRoomEditor({
+      structureId: target.structureId,
+      floorId: target.floorId,
+      roomId: target.roomId,
+      value: room.name,
+      error: null,
+    })
+  }
+
   function startInlineWallEdit(target: CanvasTarget) {
     if (target.kind !== 'wall') {
       return
@@ -1776,6 +1888,7 @@ export function FloorplanCanvas() {
     }
 
     actions.selectTarget(target)
+    setInlineRoomEditor(null)
     setInlineCornerEditor(null)
     setInlineWallEditor({
       segmentId: target.segmentId,
@@ -1793,6 +1906,7 @@ export function FloorplanCanvas() {
     }
 
     actions.selectTarget(target)
+    setInlineRoomEditor(null)
     setInlineWallEditor(null)
     setInlineCornerEditor({
       target,
@@ -1800,6 +1914,57 @@ export function FloorplanCanvas() {
       direction: corner.turn < -0.5 ? 'right' : 'left',
       error: null,
     })
+  }
+
+  function commitInlineRoomEdit(nextValue?: string) {
+    if (!inlineRoomEditor) {
+      return
+    }
+
+    const value = nextValue ?? inlineRoomEditor.value
+    const validation = validateName(value)
+
+    if (!validation.valid) {
+      setInlineRoomEditor((current) =>
+        current && current.roomId === inlineRoomEditor.roomId
+          ? {
+              ...current,
+              error: validation.error,
+            }
+          : current,
+      )
+      if (validation.error) {
+        actions.setStatus(validation.error)
+      }
+      return
+    }
+
+    const result = actions.renameEntity(
+      'room',
+      {
+        structureId: inlineRoomEditor.structureId,
+        floorId: inlineRoomEditor.floorId,
+        roomId: inlineRoomEditor.roomId,
+      },
+      value,
+    )
+
+    if (!result.valid) {
+      setInlineRoomEditor((current) =>
+        current && current.roomId === inlineRoomEditor.roomId
+          ? {
+              ...current,
+              error: result.error,
+            }
+          : current,
+      )
+      if (result.error) {
+        actions.setStatus(result.error)
+      }
+      return
+    }
+
+    setInlineRoomEditor(null)
   }
 
   function commitInlineWallEdit(nextValue?: string) {
@@ -1928,6 +2093,19 @@ export function FloorplanCanvas() {
     setInlineCornerEditor(null)
   }
 
+  function handleInlineRoomInputKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      commitInlineRoomEdit(event.currentTarget.value)
+      return
+    }
+
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      setInlineRoomEditor(null)
+    }
+  }
+
   function handleInlineWallInputKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
     if (event.key === 'Enter') {
       event.preventDefault()
@@ -1984,6 +2162,7 @@ export function FloorplanCanvas() {
       actions.selectRoom(target.structureId, target.floorId, target.roomId)
       beginDrag(event, {
         kind: 'room',
+        source: 'annotation',
         pointerId: event.pointerId,
         clientX: event.clientX,
         clientY: event.clientY,
@@ -2191,6 +2370,7 @@ export function FloorplanCanvas() {
         actions.selectRoom(activeStructure.id, floor.id, room.id)
         beginDrag(event, {
           kind: 'room',
+          source: 'room',
           pointerId: event.pointerId,
           clientX: event.clientX,
           clientY: event.clientY,

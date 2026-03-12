@@ -8,8 +8,7 @@ import { formatFeet } from '../lib/geometry'
 import { renderEditor } from '../test/renderEditor'
 
 describe('workspace interactions', () => {
-  it('keeps room rename on labels while direct canvas clicks edit walls and corners', async () => {
-    const user = userEvent.setup()
+  it('keeps room naming inline on labels while direct canvas clicks edit walls and corners', async () => {
     const draft = createSeedState()
     const livingRoom = draft.structures[0].floors[0].rooms[0]
     const kitchen = draft.structures[0].floors[0].rooms[2]
@@ -22,10 +21,8 @@ describe('workspace interactions', () => {
     expect(screen.getByRole('heading', { name: kitchen.name })).toBeInTheDocument()
 
     fireEvent.click(screen.getByTestId(`room-label-${livingRoom.id}`))
-    expect(screen.getByRole('dialog')).toHaveTextContent('Rename room')
-    expect(screen.getByDisplayValue(livingRoom.name)).toBeInTheDocument()
-
-    await user.click(screen.getByRole('button', { name: 'Close' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Room name' })).toHaveValue(livingRoom.name)
 
     fireEvent.click(screen.getByTestId(`wall-label-${firstWall.id}`))
     const inlineLength = screen.getByRole('textbox', { name: 'Wall length' })
@@ -203,7 +200,8 @@ describe('workspace interactions', () => {
     mockCanvasRect(svg)
 
     fireEvent.click(screen.getByTestId(`room-label-${room.id}`))
-    const nameInput = screen.getByRole('textbox', { name: 'Name' })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    const nameInput = screen.getByRole('textbox', { name: 'Room name' })
     await user.clear(nameInput)
     await user.type(nameInput, 'Canceled rename')
 
@@ -1211,12 +1209,12 @@ describe('workspace interactions', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: expandedFloorLabel })).toBeInTheDocument())
 
     fireEvent.click(screen.getByTestId(`room-label-${room.id}`))
-    const input = screen.getByRole('textbox', { name: 'Name' })
+    const input = screen.getByRole('textbox', { name: 'Room name' })
     input.focus()
 
     fireEvent.keyDown(input, { key: 'z', ctrlKey: true })
 
-    expect(screen.getByRole('dialog')).toHaveTextContent('Rename room')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: expandedFloorLabel })).toBeInTheDocument()
   })
 

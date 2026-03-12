@@ -131,12 +131,15 @@ test('supports direct canvas editing and route-based navigation', async ({ page 
   await expect(page.locator('.toolbar-pill').first()).toHaveText('100%')
 
   await roomLabel.click({ force: true })
-  await expect(page.getByRole('dialog')).toContainText('Rename room')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
 
-  const renameInput = page.getByRole('textbox', { name: 'Name' })
+  const renameInput = page.getByRole('textbox', { name: 'Room name' })
   await renameInput.fill('Room 🧱 測試 خانه')
-  await page.getByRole('button', { name: 'Save name' }).click()
-  await expect(page.getByRole('dialog')).toBeHidden()
+  await renameInput.press('Enter')
+  await expect(page.getByRole('textbox', { name: 'Room name' })).toHaveCount(0)
+  await expect(
+    page.locator('.canvas-annotation-layer [data-testid^="room-label-"]').filter({ hasText: 'Room 🧱 測試 خانه' }),
+  ).toBeVisible()
 
   const wallTarget = page.locator('[data-testid^="wall-hit-"]').first()
   const wallTargetTestId = await wallTarget.getAttribute('data-testid')
