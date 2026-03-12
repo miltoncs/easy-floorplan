@@ -1,3 +1,4 @@
+import { MetricCard } from '../components/MetricCard'
 import { useEditor } from '../context/EditorContext'
 import { describeCornerAngle, formatFeet, getRoomCorners } from '../lib/geometry'
 
@@ -416,14 +417,5 @@ export function DetailPage() {
         </div>
       </div>
     </section>
-  )
-}
-
-function MetricCard({ label, value }: { label: string; value: string }) {
-  return (
-    <article className="metric-card">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </article>
   )
 }
