@@ -1063,6 +1063,46 @@ describe('workspace interactions', () => {
     expect(screen.getByTestId(`wall-label-${firstWall.id}`)).toBeInTheDocument()
   })
 
+  it('keeps each wall length label closer to its own wall than a nearby parallel wall', () => {
+    const draft = createSeedState()
+    const room = createRoom({
+      id: 'shallow-room',
+      name: 'Shallow room',
+      anchor: { x: 18, y: 0 },
+      startHeading: 180,
+      segments: [
+        createSegment({ id: 'shallow-bottom', label: 'Bottom', length: 18, turn: -90 }),
+        createSegment({ id: 'shallow-left', label: 'Left', length: 1, turn: -90 }),
+        createSegment({ id: 'shallow-top', label: 'Top', length: 18, turn: -90 }),
+        createSegment({ id: 'shallow-right', label: 'Right', length: 1, turn: -90 }),
+      ],
+      furniture: [],
+    })
+
+    draft.structures[0].floors[0].rooms = [room]
+    draft.selectedRoomId = room.id
+    draft.selectedFurnitureId = null
+
+    renderEditor({ draft })
+
+    const svg = screen.getByLabelText('Interactive floorplan canvas')
+    const topLabel = getWallLabelScreenCenter('shallow-top')
+    const bottomLabel = getWallLabelScreenCenter('shallow-bottom')
+    const topWall = getWallLineScreenPosition('shallow-top', svg)
+    const bottomWall = getWallLineScreenPosition('shallow-bottom', svg)
+
+    expect(
+      getPointToSegmentDistance(topLabel, { x: topWall.x1, y: topWall.y1 }, { x: topWall.x2, y: topWall.y2 }),
+    ).toBeLessThan(
+      getPointToSegmentDistance(topLabel, { x: bottomWall.x1, y: bottomWall.y1 }, { x: bottomWall.x2, y: bottomWall.y2 }),
+    )
+    expect(
+      getPointToSegmentDistance(bottomLabel, { x: bottomWall.x1, y: bottomWall.y1 }, { x: bottomWall.x2, y: bottomWall.y2 }),
+    ).toBeLessThan(
+      getPointToSegmentDistance(bottomLabel, { x: topWall.x1, y: topWall.y1 }, { x: topWall.x2, y: topWall.y2 }),
+    )
+  })
+
   it('shrinks wall hover hit widths as the canvas zooms in', async () => {
     const draft = createSeedState()
     const firstWall = draft.structures[0].floors[0].rooms[0].segments[0]
@@ -1656,6 +1696,36 @@ function getWallLinePosition(segmentId: string) {
     x2: Number(line.getAttribute('x2')),
     y1: Number(line.getAttribute('y1')),
     y2: Number(line.getAttribute('y2')),
+  }
+}
+
+function getWallLabelScreenCenter(segmentId: string) {
+  const label = screen.getByTestId(`wall-label-${segmentId}`)
+  const chip = label.closest('.canvas-wall-chip')
+
+  if (!(chip instanceof HTMLElement)) {
+    throw new Error('Expected wall label chip')
+  }
+
+  const position = readAbsolutePosition(chip)
+
+  return {
+    x: position.left,
+    y: position.top,
+  }
+}
+
+function getWallLineScreenPosition(segmentId: string, svg: HTMLElement) {
+  const line = screen.getByTestId(`wall-hit-${segmentId}`)
+  const { x, y, width, height } = getViewBoxRect(svg)
+  const widthPx = 960
+  const heightPx = 720
+
+  return {
+    x1: ((Number(line.getAttribute('x1')) - x) / width) * widthPx,
+    x2: ((Number(line.getAttribute('x2')) - x) / width) * widthPx,
+    y1: ((Number(line.getAttribute('y1')) - y) / height) * heightPx,
+    y2: ((Number(line.getAttribute('y2')) - y) / height) * heightPx,
   }
 }
 

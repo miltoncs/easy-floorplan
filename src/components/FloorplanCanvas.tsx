@@ -124,6 +124,12 @@ type ScreenPoint = {
   y: number
 }
 
+type ScreenSegment = {
+  id: string
+  start: ScreenPoint
+  end: ScreenPoint
+}
+
 type SuggestionPreview = {
   suggestion: RoomSuggestion & { segmentsToAdd: SuggestionSegment[] }
   points: Point[]
@@ -151,6 +157,12 @@ type CanvasAnnotation = {
   priority: number
   required?: boolean
   candidateOffsets: ScreenPoint[]
+  scoreCandidate?: (candidate: {
+    rect: CanvasRect
+    position: ScreenPoint
+    offset: ScreenPoint
+    index: number
+  }) => number
 }
 
 type PlacedCanvasAnnotation = CanvasAnnotation & {
@@ -2773,6 +2785,25 @@ function getScreenPointDistance(left: ScreenPoint, right: ScreenPoint) {
   return Math.hypot(left.x - right.x, left.y - right.y)
 }
 
+function getPointToSegmentDistance(point: ScreenPoint, start: ScreenPoint, end: ScreenPoint) {
+  const deltaX = end.x - start.x
+  const deltaY = end.y - start.y
+  const lengthSquared = deltaX ** 2 + deltaY ** 2
+
+  if (lengthSquared === 0) {
+    return Math.hypot(point.x - start.x, point.y - start.y)
+  }
+
+  const projection = ((point.x - start.x) * deltaX + (point.y - start.y) * deltaY) / lengthSquared
+  const t = clamp(projection, 0, 1)
+  const closest = {
+    x: start.x + deltaX * t,
+    y: start.y + deltaY * t,
+  }
+
+  return Math.hypot(point.x - closest.x, point.y - closest.y)
+}
+
 function getSuggestionCandidateOffsets(
   preview: SuggestionPreview,
   metrics: CanvasMetrics,
@@ -3252,17 +3283,83 @@ function buildWallAnnotationOffsets(start: ScreenPoint, end: ScreenPoint): Scree
   const length = Math.max(Math.hypot(deltaX, deltaY), 1)
   const tangent = { x: deltaX / length, y: deltaY / length }
   const normal = { x: -deltaY / length, y: deltaX / length }
-
-  return [
-    { x: normal.x * 22, y: normal.y * 22 },
-    { x: -normal.x * 22, y: -normal.y * 22 },
-    { x: normal.x * 34 + tangent.x * 14, y: normal.y * 34 + tangent.y * 14 },
-    { x: -normal.x * 34 + tangent.x * 14, y: -normal.y * 34 + tangent.y * 14 },
-    { x: normal.x * 34 - tangent.x * 14, y: normal.y * 34 - tangent.y * 14 },
-    { x: -normal.x * 34 - tangent.x * 14, y: -normal.y * 34 - tangent.y * 14 },
-    { x: tangent.x * 30, y: tangent.y * 30 },
-    { x: -tangent.x * 30, y: -tangent.y * 30 },
+  const tangentExtent = Math.max(length / 2 - 28, 0)
+  const tangentOffsets = [
+    0,
+    clamp(length * 0.18, 0, tangentExtent),
+    clamp(-length * 0.18, -tangentExtent, 0),
+    clamp(length * 0.32, 0, tangentExtent),
+    clamp(-length * 0.32, -tangentExtent, 0),
   ]
+  const normalOffsets = [22, -22, 34, -34]
+  const offsets: ScreenPoint[] = []
+  const seen = new Set<string>()
+
+  normalOffsets.forEach((normalOffset) => {
+    tangentOffsets.forEach((tangentOffset) => {
+      const offset = {
+        x: normal.x * normalOffset + tangent.x * tangentOffset,
+        y: normal.y * normalOffset + tangent.y * tangentOffset,
+      }
+      const key = `${Math.round(offset.x * 1000)}:${Math.round(offset.y * 1000)}`
+
+      if (seen.has(key)) {
+        return
+      }
+
+      seen.add(key)
+      offsets.push(offset)
+    })
+  })
+
+  if (tangentExtent > 0) {
+    ;[tangentExtent, -tangentExtent].forEach((tangentOffset) => {
+      const offset = {
+        x: tangent.x * tangentOffset,
+        y: tangent.y * tangentOffset,
+      }
+      const key = `${Math.round(offset.x * 1000)}:${Math.round(offset.y * 1000)}`
+
+      if (seen.has(key)) {
+        return
+      }
+
+      seen.add(key)
+      offsets.push(offset)
+    })
+  }
+
+  return offsets
+}
+
+function getWallAnnotationCandidatePenalty(
+  position: ScreenPoint,
+  ownSegment: ScreenSegment,
+  allSegments: ScreenSegment[],
+) {
+  const ownDistance = getPointToSegmentDistance(position, ownSegment.start, ownSegment.end)
+  let nearestOtherDistance = Number.POSITIVE_INFINITY
+
+  allSegments.forEach((segment) => {
+    if (segment.id === ownSegment.id) {
+      return
+    }
+
+    nearestOtherDistance = Math.min(
+      nearestOtherDistance,
+      getPointToSegmentDistance(position, segment.start, segment.end),
+    )
+  })
+
+  if (!Number.isFinite(nearestOtherDistance)) {
+    return 0
+  }
+
+  const desiredClearancePx = 12
+  const otherWallCloserPenalty = Math.max(0, ownDistance - nearestOtherDistance + 1) * 1_000
+  const tightClearancePenalty = Math.max(0, ownDistance + desiredClearancePx - nearestOtherDistance) * 40
+
+  return otherWallCloserPenalty + tightClearancePenalty
 }
 
 function getScreenAngleDegrees(origin: ScreenPoint, point: ScreenPoint) {
@@ -3490,10 +3587,21 @@ function buildCanvasAnnotations({
   })
 
   if (allowHoverWallLabels && selectedRoomGeometry && selectedRoom && activeStructureId && selectedRoomId) {
+    const wallScreenSegments = selectedRoomGeometry.segments.map((segment) => ({
+      id: segment.id,
+      start: worldToScreenPoint(segment.start, viewBox, canvasMetrics, viewRotationQuarterTurns),
+      end: worldToScreenPoint(segment.end, viewBox, canvasMetrics, viewRotationQuarterTurns),
+    }))
+    const wallScreenSegmentsById = new Map(wallScreenSegments.map((segment) => [segment.id, segment]))
+
     selectedRoomGeometry.segments.forEach((segment) => {
       const midpointScreen = worldToScreenPoint(midpoint(segment.start, segment.end), viewBox, canvasMetrics, viewRotationQuarterTurns)
-      const start = worldToScreenPoint(segment.start, viewBox, canvasMetrics, viewRotationQuarterTurns)
-      const end = worldToScreenPoint(segment.end, viewBox, canvasMetrics, viewRotationQuarterTurns)
+      const wallScreenSegment = wallScreenSegmentsById.get(segment.id)
+
+      if (!wallScreenSegment) {
+        return
+      }
+
       const wallTarget: CanvasTarget = {
         kind: 'wall',
         structureId: activeStructureId,
@@ -3523,7 +3631,9 @@ function buildCanvasAnnotations({
         heightPx: wallSize.heightPx,
         priority: wallEditing ? 99 : wallSelected || wallFocused ? 94 : wallHovered ? 88 : 76,
         required: showWallLabels || wallHovered || wallEditing,
-        candidateOffsets: buildWallAnnotationOffsets(start, end),
+        candidateOffsets: buildWallAnnotationOffsets(wallScreenSegment.start, wallScreenSegment.end),
+        scoreCandidate: ({ position }) =>
+          getWallAnnotationCandidatePenalty(position, wallScreenSegment, wallScreenSegments),
       })
     })
   }
@@ -3726,25 +3836,43 @@ function placeCanvasAnnotations(
           ),
           bounds,
         )
+        const position = {
+          x: (rect.minX + rect.maxX) / 2,
+          y: (rect.minY + rect.maxY) / 2,
+        }
 
         return {
           rect,
+          position,
           index,
+          penalty: descriptor.scoreCandidate?.({ rect, position, offset, index }) ?? 0,
           overlap: occupied.reduce((sum, occupiedRect) => sum + overlapArea(rect, occupiedRect), 0),
-          distance: Math.hypot(offset.x, offset.y),
+          distance: Math.hypot(position.x - descriptor.anchor.x, position.y - descriptor.anchor.y),
         }
       })
 
       const zeroOverlap = candidates.filter((candidate) => candidate.overlap === 0)
+      const compareCandidates = (
+        left: { penalty: number; distance: number; index: number },
+        right: { penalty: number; distance: number; index: number },
+      ) => left.penalty - right.penalty || left.distance - right.distance || left.index - right.index
       const idealCandidate =
-        zeroOverlap.sort((left, right) => left.distance - right.distance || left.index - right.index)[0] ??
+        zeroOverlap.sort(compareCandidates)[0] ??
         (descriptor.required
           ? candidates.reduce((best, candidate) => {
               if (candidate.overlap !== best.overlap) {
                 return candidate.overlap < best.overlap ? candidate : best
               }
 
-              return candidate.distance < best.distance ? candidate : best
+              if (candidate.penalty !== best.penalty) {
+                return candidate.penalty < best.penalty ? candidate : best
+              }
+
+              if (candidate.distance !== best.distance) {
+                return candidate.distance < best.distance ? candidate : best
+              }
+
+              return candidate.index < best.index ? candidate : best
             })
           : null)
 
@@ -3758,15 +3886,10 @@ function placeCanvasAnnotations(
           ? previousCandidate
           : idealCandidate
 
-      const position = {
-        x: (selectedCandidate.rect.minX + selectedCandidate.rect.maxX) / 2,
-        y: (selectedCandidate.rect.minY + selectedCandidate.rect.maxY) / 2,
-      }
-
       placed.push({
         ...descriptor,
         rect: selectedCandidate.rect,
-        position,
+        position: selectedCandidate.position,
         candidateIndex: selectedCandidate.index,
       })
       occupied.push(expandRect(selectedCandidate.rect, 8, 8))
@@ -3780,11 +3903,13 @@ function getAnnotationPlacementKey(annotation: Pick<CanvasAnnotation, 'kind' | '
 }
 
 function shouldKeepPreviousAnnotationPlacement(
-  previousCandidate: { overlap: number; distance: number },
-  idealCandidate: { overlap: number; distance: number },
+  previousCandidate: { overlap: number; penalty: number; distance: number },
+  idealCandidate: { overlap: number; penalty: number; distance: number },
 ) {
+  const penaltyTolerance = 140
+
   if (previousCandidate.overlap === 0) {
-    return true
+    return previousCandidate.penalty <= idealCandidate.penalty + penaltyTolerance
   }
 
   const overlapTolerance = 180
@@ -3792,6 +3917,7 @@ function shouldKeepPreviousAnnotationPlacement(
 
   return (
     previousCandidate.overlap <= idealCandidate.overlap + overlapTolerance &&
+    previousCandidate.penalty <= idealCandidate.penalty + penaltyTolerance &&
     previousCandidate.distance <= idealCandidate.distance + distanceTolerance
   )
 }
