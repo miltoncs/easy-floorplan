@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { createSeedState } from '../data/seed'
 import { createFurniture, createRoom, createSegment } from '../lib/blueprint'
+import { MAX_CAMERA_ZOOM } from '../lib/camera'
 import { renderEditor } from '../test/renderEditor'
 
 describe('workspace interactions', () => {
@@ -948,7 +949,7 @@ describe('workspace interactions', () => {
 
     zoomCanvasToMax(svg)
 
-    await waitFor(() => expect(screen.getByText('350%')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText(formatZoomPercent(MAX_CAMERA_ZOOM))).toBeInTheDocument())
 
     const zoomedFirstCornerHit = screen.getByTestId('corner-hit-tiny-a')
     const zoomedSecondCornerHit = screen.getByTestId('corner-hit-tiny-b')
@@ -999,7 +1000,7 @@ describe('workspace interactions', () => {
 
     zoomCanvasToMax(svg)
 
-    await waitFor(() => expect(screen.getByText('350%')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText(formatZoomPercent(MAX_CAMERA_ZOOM))).toBeInTheDocument())
 
     expect(Number(screen.getByTestId(`wall-hit-${firstWall.id}`).getAttribute('stroke-width'))).toBeLessThan(initialStrokeWidth)
   })
@@ -1413,6 +1414,10 @@ function zoomCanvasToMax(element: HTMLElement) {
       deltaY: -120,
     })
   }
+}
+
+function formatZoomPercent(zoom: number) {
+  return `${Math.round(zoom * 100)}%`
 }
 
 function getViewBoxCenter(element: HTMLElement) {

@@ -19,6 +19,7 @@ import {
   getRoomLabelPoint,
   getViewBox,
 } from '../lib/blueprint'
+import { MAX_CAMERA_ZOOM, MIN_CAMERA_ZOOM } from '../lib/camera'
 import { parseDistanceInput } from '../lib/distance'
 import { MODE_LABELS } from '../lib/editorModes'
 import {
@@ -402,7 +403,7 @@ export function FloorplanCanvas() {
     const pointerRatioY = (clientY - rect.top) / rect.height
     const currentViewPoint = screenToBaseSvgPoint(clientX, clientY, rect, viewBox, viewRotationQuarterTurns)
     const nextZoom = deltaY > 0 ? ui.camera.zoom / WHEEL_ZOOM_MULTIPLIER : ui.camera.zoom * WHEEL_ZOOM_MULTIPLIER
-    const clampedZoom = Math.max(0.45, Math.min(3.5, nextZoom))
+    const clampedZoom = clamp(nextZoom, MIN_CAMERA_ZOOM, MAX_CAMERA_ZOOM)
     actions.setCamera(
       getCameraForScreenAnchor(
         ui.camera.frameBounds,

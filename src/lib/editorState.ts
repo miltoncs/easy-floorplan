@@ -16,6 +16,7 @@ import {
   loadDraftState,
   touchStructure,
 } from './blueprint'
+import { MAX_CAMERA_ZOOM, MIN_CAMERA_ZOOM } from './camera'
 import { clamp } from './geometry'
 
 const DEFAULT_STATUS = 'Autosaving locally. Use the Data page for JSON import and export.'
@@ -285,7 +286,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         ui: {
           ...state.ui,
           camera: {
-            zoom: clamp(action.camera.zoom, 0.45, 3.5),
+            zoom: clamp(action.camera.zoom, MIN_CAMERA_ZOOM, MAX_CAMERA_ZOOM),
             offset: action.camera.offset,
             frameBounds: action.camera.frameBounds ?? state.ui.camera.frameBounds,
           },
