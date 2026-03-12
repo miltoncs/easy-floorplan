@@ -47,6 +47,9 @@ export function CanvasContextMenu() {
     getCanvasMenuItems(menuTarget, {
       canDeleteFloor,
       hasSelectedRoom: Boolean(selectedRoom),
+      canMeasureFromHere: target.kind !== 'structure' && Boolean(ui.contextMenu?.canvasPoint),
+      hasMeasurements: ui.measurements.length > 0 || ui.pendingMeasurementStart !== null,
+      includeMeasurementActions: menuTarget.kind === target.kind && target.kind !== 'structure',
     }).map((item) => ({
       item,
       target: menuTarget,
@@ -130,6 +133,18 @@ export function CanvasContextMenu() {
   )
 
   function runMenuAction(actionId: CanvasMenuActionId, actionTarget: CanvasTarget) {
+    if (actionId === 'measure-from-here') {
+      if (ui.contextMenu?.canvasPoint) {
+        actions.startMeasurement(ui.contextMenu.canvasPoint)
+      }
+      return
+    }
+
+    if (actionId === 'clear-measurements') {
+      actions.clearMeasurements()
+      return
+    }
+
     if (actionId === 'fit-view') {
       actions.resetCamera()
       return

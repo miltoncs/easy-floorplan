@@ -36,7 +36,7 @@ import {
   roomToGeometry,
   snapFurnitureToRoom,
 } from '../lib/geometry'
-import type { Bounds, CanvasTarget, Floor, Point, Room, RoomSuggestion, SuggestionSegment } from '../types'
+import type { Bounds, CanvasMeasurement, CanvasTarget, Floor, Point, Room, RoomSuggestion, SuggestionSegment } from '../types'
 
 type DragState =
   | {
@@ -159,6 +159,11 @@ type PlacedCanvasAnnotation = CanvasAnnotation & {
   candidateIndex: number
 }
 
+type PlacedCanvasMeasurement = {
+  measurement: CanvasMeasurement
+  labelPoint: ScreenPoint
+}
+
 type HoverCornerOverlay = {
   target: Extract<CanvasTarget, { kind: 'corner' }>
   arcPath: string
@@ -224,6 +229,7 @@ export function FloorplanCanvas() {
   const dragRef = useRef<DragState>(null)
   const wheelGestureRef = useRef<WheelGestureState | null>(null)
   const cancelActiveInteractionRef = useRef<(() => void) | null>(null)
+  const suppressMeasurementClickRef = useRef(false)
   const suppressCanvasClickRef = useRef(false)
   const suppressTargetClickRef = useRef<CanvasTarget | null>(null)
   const suppressTargetClickTimerRef = useRef<number | null>(null)
@@ -260,6 +266,12 @@ export function FloorplanCanvas() {
   const canvasMetrics = getCanvasMetrics(viewBox, canvasSize)
   const hoverHitboxScale = getHoverHitboxScale(ui.camera.zoom)
   const wallHitStrokeWidthPx = WALL_HIT_STROKE_WIDTH_PX * hoverHitboxScale
+  const placedMeasurements = ui.measurements.map((measurement) =>
+    placeCanvasMeasurement(measurement, viewBox, canvasMetrics, viewRotationQuarterTurns),
+  )
+  const pendingMeasurementScreenPoint = ui.pendingMeasurementStart
+    ? worldToScreenPoint(ui.pendingMeasurementStart, viewBox, canvasMetrics, viewRotationQuarterTurns)
+    : null
   const cornerHitRadius = getWorldLengthForScreenPixels(
     canvasMetrics,
     CORNER_HIT_RADIUS_PX * hoverHitboxScale,
@@ -925,12 +937,15 @@ export function FloorplanCanvas() {
         'canvas-stage',
         isDragging ? 'dragging' : '',
         showSimplifiedDragPreview ? 'canvas-stage--simplified-drag' : '',
+        ui.pendingMeasurementStart ? 'canvas-stage--measuring' : '',
         selectionBox ? 'selecting' : '',
         !draft.showLabelShapes ? 'canvas-stage--plain-labels' : '',
       ]
         .filter(Boolean)
         .join(' ')}
       data-testid="canvas-stage"
+      onClickCapture={handleMeasurementClickCapture}
+      onPointerDownCapture={handleMeasurementPointerDownCapture}
       ref={stageRef}
       style={canvasAppearanceStyle}
     >
@@ -957,9 +972,11 @@ export function FloorplanCanvas() {
               return
             }
 
+            const canvasPoint = getCanvasPointFromClient(rect.left + rect.width / 2, rect.top + rect.height / 2)
             actions.openContextMenu({
               x: rect.left + rect.width / 2,
               y: rect.top + rect.height / 2,
+              canvasPoint,
               target: ui.focusedTarget ?? canvasTarget,
             })
           }
@@ -1058,6 +1075,39 @@ export function FloorplanCanvas() {
             isFurnitureMode={draft.editorMode === 'furniture'}
           />
         ))}
+
+        {placedMeasurements.map(({ measurement }) => (
+          <g className="canvas-measurement" data-testid={`canvas-measurement-${measurement.id}`} key={measurement.id}>
+            <line
+              className="canvas-measurement__line"
+              data-testid={`canvas-measurement-line-${measurement.id}`}
+              vectorEffect="non-scaling-stroke"
+              x1={measurement.start.x}
+              x2={measurement.end.x}
+              y1={-measurement.start.y}
+              y2={-measurement.end.y}
+            />
+            <circle className="canvas-measurement__point" cx={measurement.start.x} cy={-measurement.start.y} r={0.18} />
+            <circle className="canvas-measurement__point" cx={measurement.end.x} cy={-measurement.end.y} r={0.18} />
+          </g>
+        ))}
+
+        {ui.pendingMeasurementStart ? (
+          <g className="canvas-measurement canvas-measurement--pending" data-testid="canvas-measurement-pending">
+            <circle
+              className="canvas-measurement__pending-ring"
+              cx={ui.pendingMeasurementStart.x}
+              cy={-ui.pendingMeasurementStart.y}
+              r={0.34}
+            />
+            <circle
+              className="canvas-measurement__pending-dot"
+              cx={ui.pendingMeasurementStart.x}
+              cy={-ui.pendingMeasurementStart.y}
+              r={0.14}
+            />
+          </g>
+        ) : null}
 
         {suggestedPreviews.map((preview) => (
           <g key={preview.suggestion.id}>
@@ -1178,6 +1228,36 @@ export function FloorplanCanvas() {
             height: `${selectionBox.maxY - selectionBox.minY}px`,
           }}
         />
+      ) : null}
+
+      {placedMeasurements.length > 0 || pendingMeasurementScreenPoint ? (
+        <div className="canvas-measurement-layer">
+          {placedMeasurements.map(({ measurement, labelPoint }) => (
+            <div
+              className="canvas-measurement-label"
+              data-testid={`canvas-measurement-label-${measurement.id}`}
+              key={`label-${measurement.id}`}
+              style={{
+                left: `${labelPoint.x}px`,
+                top: `${labelPoint.y}px`,
+              }}
+            >
+              {formatFeet(getMeasurementDistance(measurement))}
+            </div>
+          ))}
+          {pendingMeasurementScreenPoint ? (
+            <div
+              className="canvas-measurement-label canvas-measurement-label--pending"
+              data-testid="canvas-measurement-pending-label"
+              style={{
+                left: `${pendingMeasurementScreenPoint.x}px`,
+                top: `${pendingMeasurementScreenPoint.y - 18}px`,
+              }}
+            >
+              Click endpoint
+            </div>
+          ) : null}
+        </div>
       ) : null}
 
       {!showSimplifiedDragPreview
@@ -1533,6 +1613,7 @@ export function FloorplanCanvas() {
     actions.openContextMenu({
       x: event.clientX,
       y: event.clientY,
+      canvasPoint: getCanvasPointFromClient(event.clientX, event.clientY),
       target,
     })
   }
@@ -1938,6 +2019,71 @@ export function FloorplanCanvas() {
     dragRef.current = null
     setDragState(null)
     setIsDragging(false)
+  }
+
+  function shouldCaptureMeasurementEvent(target: EventTarget | null) {
+    return !(
+      target instanceof Element &&
+      target.closest('.canvas-toolbar, .canvas-mode-switch, .canvas-key, .canvas-suggestion-layer')
+    )
+  }
+
+  function getCanvasPointFromClient(clientX: number, clientY: number) {
+    if (!svgRef.current) {
+      return null
+    }
+
+    const rect = svgRef.current.getBoundingClientRect()
+    if (rect.width <= 0 || rect.height <= 0) {
+      return null
+    }
+
+    const svgPoint = screenToBaseSvgPoint(clientX, clientY, rect, viewBox, viewRotationQuarterTurns)
+
+    return {
+      x: svgPoint.x,
+      y: -svgPoint.y,
+    }
+  }
+
+  function handleMeasurementPointerDownCapture(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.button !== 0 || !ui.pendingMeasurementStart || !shouldCaptureMeasurementEvent(event.target)) {
+      return
+    }
+
+    const endpoint = getCanvasPointFromClient(event.clientX, event.clientY)
+
+    if (!endpoint) {
+      return
+    }
+
+    suppressMeasurementClickRef.current = true
+    event.preventDefault()
+    event.stopPropagation()
+    actions.completeMeasurement(endpoint)
+  }
+
+  function handleMeasurementClickCapture(event: ReactMouseEvent<HTMLDivElement>) {
+    if (suppressMeasurementClickRef.current) {
+      suppressMeasurementClickRef.current = false
+      event.preventDefault()
+      event.stopPropagation()
+      return
+    }
+
+    if (event.button !== 0 || !ui.pendingMeasurementStart || !shouldCaptureMeasurementEvent(event.target)) {
+      return
+    }
+
+    const endpoint = getCanvasPointFromClient(event.clientX, event.clientY)
+
+    if (!endpoint) {
+      return
+    }
+
+    event.preventDefault()
+    event.stopPropagation()
+    actions.completeMeasurement(endpoint)
   }
 
   function FloorLayer({
@@ -2927,6 +3073,41 @@ function worldToScreenPoint(
     viewBox,
     metrics,
   )
+}
+
+function placeCanvasMeasurement(
+  measurement: CanvasMeasurement,
+  viewBox: { x: number; y: number; width: number; height: number },
+  metrics: CanvasMetrics,
+  viewRotationQuarterTurns = 0,
+): PlacedCanvasMeasurement {
+  const start = worldToScreenPoint(measurement.start, viewBox, metrics, viewRotationQuarterTurns)
+  const end = worldToScreenPoint(measurement.end, viewBox, metrics, viewRotationQuarterTurns)
+  const deltaX = end.x - start.x
+  const deltaY = end.y - start.y
+  const length = Math.hypot(deltaX, deltaY)
+  const normal =
+    length > 0
+      ? {
+          x: -deltaY / length,
+          y: deltaX / length,
+        }
+      : {
+          x: 0,
+          y: -1,
+        }
+
+  return {
+    measurement,
+    labelPoint: {
+      x: (start.x + end.x) / 2 + normal.x * 14,
+      y: (start.y + end.y) / 2 + normal.y * 14,
+    },
+  }
+}
+
+function getMeasurementDistance(measurement: CanvasMeasurement) {
+  return Math.hypot(measurement.end.x - measurement.start.x, measurement.end.y - measurement.start.y)
 }
 
 function getScreenRectFromWorldBounds(

@@ -212,6 +212,41 @@ test('supports right-click menus across the 2D view and JSON round-trips', async
   await expect(page.getByRole('heading', { name: 'Cedar House' })).toBeVisible()
 })
 
+test('measures multiple distances from the canvas context menu until cleared', async ({ page }) => {
+  await page.goto('/workspace')
+  await page.waitForLoadState('networkidle')
+
+  const canvas = page.getByLabel('Interactive floorplan canvas')
+  const measurementLabels = page.locator('[data-testid^="canvas-measurement-label-"]')
+  const measurementLines = page.locator('[data-testid^="canvas-measurement-line-"]')
+  const canvasBox = await canvas.boundingBox()
+  if (!canvasBox) {
+    throw new Error('Expected canvas bounding box')
+  }
+
+  await page.mouse.click(canvasBox.x + 260, canvasBox.y + 190, { button: 'right' })
+  await page.getByRole('menuitem', { name: 'Measure From Here' }).click()
+  await expect(page.getByTestId('canvas-measurement-pending-label')).toBeVisible()
+
+  await page.mouse.click(canvasBox.x + 228, canvasBox.y + 150)
+  await expect(measurementLabels).toHaveCount(1)
+  await expect(measurementLines).toHaveCount(1)
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+
+  await page.locator('[data-testid^="wall-label-"]').first().click({ button: 'right' })
+  await page.getByRole('menuitem', { name: 'Measure From Here' }).click()
+  await expect(page.getByTestId('canvas-measurement-pending-label')).toBeVisible()
+
+  await page.mouse.click(canvasBox.x + 164, canvasBox.y + 278)
+  await expect(measurementLabels).toHaveCount(2)
+  await expect(measurementLines).toHaveCount(2)
+
+  await page.mouse.click(canvasBox.x + 274, canvasBox.y + 204, { button: 'right' })
+  await page.getByRole('menuitem', { name: 'Clear All Measurements' }).click()
+  await expect(measurementLabels).toHaveCount(0)
+  await expect(measurementLines).toHaveCount(0)
+})
+
 test('keeps wall strokes a constant screen width while zooming', async ({ page }) => {
   await page.goto('/workspace')
   await page.waitForLoadState('networkidle')

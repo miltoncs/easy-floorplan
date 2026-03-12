@@ -8,6 +8,12 @@ export type Point = {
   y: number
 }
 
+export type CanvasMeasurement = {
+  id: string
+  start: Point
+  end: Point
+}
+
 export type OutlineSegment = {
   id: string
   label: string
@@ -129,6 +135,7 @@ export type ContextMenuState = {
   x: number
   y: number
   target: CanvasTarget
+  canvasPoint?: Point | null
 } | null
 
 export type RenameDialogState = {
@@ -176,6 +183,8 @@ export type EditorUiState = {
   camera: CameraState
   dialog: DialogState
   contextMenu: ContextMenuState
+  measurements: CanvasMeasurement[]
+  pendingMeasurementStart: Point | null
   hoveredTarget: CanvasTarget | null
   focusedTarget: CanvasTarget | null
   selectionTargets: CanvasTarget[]

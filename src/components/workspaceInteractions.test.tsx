@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { createSeedState } from '../data/seed'
 import { createFurniture, createRoom, createSegment } from '../lib/blueprint'
 import { MAX_CAMERA_ZOOM } from '../lib/camera'
+import { formatFeet } from '../lib/geometry'
 import { renderEditor } from '../test/renderEditor'
 
 describe('workspace interactions', () => {
@@ -1289,6 +1290,7 @@ describe('workspace interactions', () => {
     const furniture = room.furniture[0]
 
     renderEditor({ draft })
+    mockCanvasRect(screen.getByLabelText('Interactive floorplan canvas'))
 
     fireEvent.contextMenu(screen.getByTestId('structure-header'))
     expect(screen.getByRole('menu')).toHaveTextContent('Rename structure')
@@ -1301,27 +1303,102 @@ describe('workspace interactions', () => {
     fireEvent.contextMenu(screen.getByTestId(`room-label-${room.id}`))
     expect(screen.getByRole('menu')).toHaveTextContent('Rename room')
     expect(screen.getByRole('menu')).toHaveTextContent('Rotate')
+    expect(screen.getByRole('menu')).toHaveTextContent('Measure From Here')
     fireEvent.pointerDown(document.body)
 
     fireEvent.contextMenu(screen.getByTestId(`wall-label-${wall.id}`))
     expect(screen.getByRole('menu')).toHaveTextContent('Edit wall measurements')
+    expect(screen.getByRole('menu')).toHaveTextContent('Measure From Here')
     fireEvent.pointerDown(document.body)
 
     fireEvent.contextMenu(screen.getByTestId(`corner-hit-${wall.id}`))
     const cornerMenu = screen.getByRole('menu')
     expect(cornerMenu).toHaveTextContent('Edit corner angle')
     expect(cornerMenu).toHaveTextContent('Edit wall measurements')
+    expect(within(cornerMenu).getAllByRole('menuitem', { name: 'Measure From Here' })).toHaveLength(1)
     await user.click(within(cornerMenu).getByRole('menuitem', { name: 'Edit wall measurements' }))
     expect(screen.getByRole('dialog')).toHaveTextContent('Edit wall')
     await user.click(screen.getByRole('button', { name: 'Close' }))
 
     fireEvent.contextMenu(screen.getByTestId('canvas-empty'))
     expect(screen.getByRole('menu')).toHaveTextContent('Fit view')
+    expect(screen.getByRole('menu')).toHaveTextContent('Measure From Here')
     fireEvent.pointerDown(document.body)
 
     await user.click(screen.getByRole('button', { name: 'Furniture' }))
     fireEvent.contextMenu(screen.getByTestId(`furniture-${furniture.id}`))
     expect(screen.getByRole('menu')).toHaveTextContent('Edit furniture')
+    expect(screen.getByRole('menu')).toHaveTextContent('Measure From Here')
+  })
+
+  it('measures arbitrary distances on the canvas and clears them independently of selection', async () => {
+    const user = userEvent.setup()
+    const draft = createSeedState()
+    const room = draft.structures[0].floors[0].rooms[0]
+
+    renderEditor({ draft })
+
+    const canvasStage = screen.getByTestId('canvas-stage')
+    const svg = screen.getByLabelText('Interactive floorplan canvas')
+    const canvasEmpty = screen.getByTestId('canvas-empty')
+    const wallLabel = screen.getByTestId(`wall-label-${room.segments[0].id}`)
+    mockCanvasRect(svg)
+
+    const firstStart = { clientX: 72, clientY: 96 }
+    const firstEnd = { clientX: 228, clientY: 150 }
+
+    fireEvent.contextMenu(canvasEmpty, firstStart)
+    await user.click(screen.getByRole('menuitem', { name: 'Measure From Here' }))
+    expect(screen.getByTestId('canvas-measurement-pending')).toBeInTheDocument()
+
+    fireEvent.pointerDown(canvasStage, {
+      button: 0,
+      pointerId: 41,
+      ...firstEnd,
+    })
+    fireEvent.click(canvasStage, {
+      button: 0,
+      ...firstEnd,
+    })
+
+    await waitFor(() => expect(screen.getAllByTestId(/canvas-measurement-label-/)).toHaveLength(1))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('canvas-measurement-pending')).not.toBeInTheDocument()
+    expect(screen.getAllByTestId(/canvas-measurement-line-/)).toHaveLength(1)
+    expect(screen.getAllByTestId(/canvas-measurement-label-/)[0]).toHaveTextContent(
+      formatFeet(getWorldDistanceBetweenScreenPoints(firstStart, firstEnd, svg)),
+    )
+
+    const secondStart = { clientX: 318, clientY: 224 }
+    const secondEnd = { clientX: 164, clientY: 278 }
+
+    fireEvent.contextMenu(wallLabel, secondStart)
+    await user.click(screen.getByRole('menuitem', { name: 'Measure From Here' }))
+    expect(screen.getByTestId('canvas-measurement-pending-label')).toHaveTextContent('Click endpoint')
+
+    fireEvent.pointerDown(canvasStage, {
+      button: 0,
+      pointerId: 42,
+      ...secondEnd,
+    })
+    fireEvent.click(canvasStage, {
+      button: 0,
+      ...secondEnd,
+    })
+
+    await waitFor(() => expect(screen.getAllByTestId(/canvas-measurement-label-/)).toHaveLength(2))
+    const measurementLabels = screen.getAllByTestId(/canvas-measurement-label-/)
+    expect(measurementLabels[0]).toHaveTextContent(formatFeet(getWorldDistanceBetweenScreenPoints(firstStart, firstEnd, svg)))
+    expect(measurementLabels[1]).toHaveTextContent(formatFeet(getWorldDistanceBetweenScreenPoints(secondStart, secondEnd, svg)))
+    expect(screen.getAllByTestId(/canvas-measurement-line-/)).toHaveLength(2)
+
+    fireEvent.contextMenu(canvasEmpty, { clientX: 340, clientY: 64 })
+    expect(screen.getByRole('menu')).toHaveTextContent('Clear All Measurements')
+    await user.click(screen.getByRole('menuitem', { name: 'Clear All Measurements' }))
+
+    await waitFor(() => expect(screen.queryAllByTestId(/canvas-measurement-label-/)).toHaveLength(0))
+    expect(screen.queryAllByTestId(/canvas-measurement-line-/)).toHaveLength(0)
+    expect(screen.queryByTestId('canvas-measurement-pending')).not.toBeInTheDocument()
   })
 
   it('keeps annotations near their geometry by hiding them once the described element is well offscreen', async () => {
@@ -1439,6 +1516,30 @@ function getViewBoxRect(element: HTMLElement) {
 
   const [x, y, width, height] = viewBox.split(' ').map((value) => Number.parseFloat(value))
   return { x, y, width, height }
+}
+
+function getWorldPointFromScreenPoint(
+  point: { clientX: number; clientY: number },
+  svg: HTMLElement,
+) {
+  const rect = svg.getBoundingClientRect()
+  const viewBox = getViewBoxRect(svg)
+
+  return {
+    x: viewBox.x + ((point.clientX - rect.left) / rect.width) * viewBox.width,
+    y: -(viewBox.y + ((point.clientY - rect.top) / rect.height) * viewBox.height),
+  }
+}
+
+function getWorldDistanceBetweenScreenPoints(
+  start: { clientX: number; clientY: number },
+  end: { clientX: number; clientY: number },
+  svg: HTMLElement,
+) {
+  const worldStart = getWorldPointFromScreenPoint(start, svg)
+  const worldEnd = getWorldPointFromScreenPoint(end, svg)
+
+  return Math.hypot(worldEnd.x - worldStart.x, worldEnd.y - worldStart.y)
 }
 
 function getAnnotationLeft(testId: string) {

@@ -1,12 +1,14 @@
 import { createSeedState } from '../data/seed'
 import type {
   Bounds,
+  CanvasMeasurement,
   CanvasTarget,
   ContextMenuState,
   DialogState,
   DraftState,
   EditorState,
   EditorUiState,
+  Point,
 } from '../types'
 import {
   computeVisibleBounds,
@@ -14,6 +16,7 @@ import {
   findActiveFloor,
   findActiveStructure,
   loadDraftState,
+  makeId,
   touchStructure,
 } from './blueprint'
 import { MAX_CAMERA_ZOOM, MIN_CAMERA_ZOOM } from './camera'
@@ -112,6 +115,17 @@ export type EditorAction =
       targets: CanvasTarget[]
     }
   | {
+      type: 'startMeasurement'
+      point: Point
+    }
+  | {
+      type: 'completeMeasurement'
+      point: Point
+    }
+  | {
+      type: 'clearMeasurements'
+    }
+  | {
       type: 'setCamera'
       camera: Omit<EditorUiState['camera'], 'frameBounds'> & { frameBounds?: EditorUiState['camera']['frameBounds'] }
     }
@@ -139,6 +153,8 @@ export function createInitialState(initialDraft?: DraftState): EditorState {
       camera: createCamera(viewBounds),
       dialog: null,
       contextMenu: null,
+      measurements: [],
+      pendingMeasurementStart: null,
       hoveredTarget: null,
       focusedTarget: null,
       selectionTargets: [],
@@ -201,6 +217,8 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
           camera: createCamera(nextViewBounds),
           dialog: null,
           contextMenu: null,
+          measurements: [],
+          pendingMeasurementStart: null,
           focusedTarget: null,
           selectionTargets: [],
         },
@@ -278,6 +296,51 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         ui: {
           ...state.ui,
           selectionTargets: action.targets,
+        },
+      }
+    case 'startMeasurement':
+      return {
+        ...state,
+        ui: {
+          ...state.ui,
+          status: 'Measurement start set. Click to place the endpoint.',
+          contextMenu: null,
+          pendingMeasurementStart: { ...action.point },
+        },
+      }
+    case 'completeMeasurement': {
+      if (!state.ui.pendingMeasurementStart) {
+        return state
+      }
+
+      const measurement: CanvasMeasurement = {
+        id: makeId('measurement'),
+        start: { ...state.ui.pendingMeasurementStart },
+        end: { ...action.point },
+      }
+
+      return {
+        ...state,
+        ui: {
+          ...state.ui,
+          status: 'Measurement added.',
+          measurements: [...state.ui.measurements, measurement],
+          pendingMeasurementStart: null,
+        },
+      }
+    }
+    case 'clearMeasurements':
+      return {
+        ...state,
+        ui: {
+          ...state.ui,
+          status:
+            state.ui.measurements.length > 0 || state.ui.pendingMeasurementStart
+              ? 'Measurements cleared.'
+              : 'No measurements to clear.',
+          contextMenu: null,
+          measurements: [],
+          pendingMeasurementStart: null,
         },
       }
     case 'setCamera':
@@ -369,6 +432,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
           ...state.ui,
           dialog: null,
           contextMenu: null,
+          pendingMeasurementStart: null,
           selectionTargets: [],
         },
       }

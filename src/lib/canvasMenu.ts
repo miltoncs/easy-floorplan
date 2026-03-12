@@ -7,6 +7,7 @@ export type CanvasMenuActionId =
   | 'add-room'
   | 'add-wall'
   | 'add-wall-after'
+  | 'clear-measurements'
   | 'delete-floor'
   | 'delete-furniture'
   | 'delete-room'
@@ -16,6 +17,7 @@ export type CanvasMenuActionId =
   | 'edit-wall'
   | 'export-structure'
   | 'fit-view'
+  | 'measure-from-here'
   | 'open-detail'
   | 'rotate-room-180'
   | 'rotate-room-clockwise-90'
@@ -47,6 +49,9 @@ export function getCanvasMenuItems(
   options: {
     canDeleteFloor: boolean
     hasSelectedRoom: boolean
+    canMeasureFromHere: boolean
+    hasMeasurements: boolean
+    includeMeasurementActions: boolean
   },
 ): CanvasMenuItem[] {
   switch (target.kind) {
@@ -66,10 +71,10 @@ export function getCanvasMenuItems(
       if (options.canDeleteFloor) {
         items.push({ kind: 'action', id: 'delete-floor', label: 'Delete floor', destructive: true })
       }
-      return items
+      return appendMeasurementItems(items, options)
     }
     case 'room':
-      return [
+      return appendMeasurementItems([
         { kind: 'action', id: 'rename-room', label: 'Rename room' },
         {
           kind: 'submenu',
@@ -85,23 +90,23 @@ export function getCanvasMenuItems(
         { kind: 'action', id: 'open-detail', label: 'Open detail page' },
         { kind: 'action', id: 'add-wall', label: 'Add wall' },
         { kind: 'action', id: 'delete-room', label: 'Delete room', destructive: true },
-      ]
+      ], options)
     case 'wall':
-      return [
+      return appendMeasurementItems([
         { kind: 'action', id: 'edit-wall', label: 'Edit wall measurements' },
         { kind: 'action', id: 'add-wall-after', label: 'Insert wall after' },
         { kind: 'action', id: 'delete-wall', label: 'Delete wall', destructive: true },
-      ]
+      ], options)
     case 'corner':
-      return [
+      return appendMeasurementItems([
         { kind: 'action', id: 'edit-corner', label: 'Edit corner angle' },
-      ]
+      ], options)
     case 'furniture':
-      return [
+      return appendMeasurementItems([
         { kind: 'action', id: 'edit-furniture', label: 'Edit furniture' },
         { kind: 'action', id: 'rename-furniture', label: 'Rename furniture' },
         { kind: 'action', id: 'delete-furniture', label: 'Delete furniture', destructive: true },
-      ]
+      ], options)
     case 'canvas': {
       const items: CanvasMenuItem[] = [
         { kind: 'action', id: 'add-room', label: 'Add room' },
@@ -112,7 +117,32 @@ export function getCanvasMenuItems(
       if (options.hasSelectedRoom) {
         items.splice(2, 0, { kind: 'action', id: 'add-furniture', label: 'Add furniture' })
       }
-      return items
+      return appendMeasurementItems(items, options)
     }
   }
+}
+
+function appendMeasurementItems(
+  items: CanvasMenuItem[],
+  options: {
+    canMeasureFromHere: boolean
+    hasMeasurements: boolean
+    includeMeasurementActions: boolean
+  },
+) {
+  if (!options.includeMeasurementActions) {
+    return items
+  }
+
+  const measurementItems: CanvasMenuItem[] = []
+
+  if (options.canMeasureFromHere) {
+    measurementItems.push({ kind: 'action', id: 'measure-from-here', label: 'Measure From Here' })
+  }
+
+  if (options.hasMeasurements) {
+    measurementItems.push({ kind: 'action', id: 'clear-measurements', label: 'Clear All Measurements' })
+  }
+
+  return measurementItems.length > 0 ? [...measurementItems, ...items] : items
 }
