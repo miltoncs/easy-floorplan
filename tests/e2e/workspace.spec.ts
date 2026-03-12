@@ -193,7 +193,16 @@ test('supports right-click menus across the 2D view and JSON round-trips', async
   await page.mouse.click(10, 10)
 
   await page.getByTestId('canvas-empty').click({ button: 'right', position: { x: 16, y: 16 } })
-  await expect(page.getByRole('menu')).toContainText('Fit view')
+  const canvasMenu = page.getByRole('menu')
+  const firstCanvasMenuItem = canvasMenu.getByRole('menuitem').first()
+  await expect(canvasMenu).toContainText('Fit view')
+  await expect(canvasMenu).toHaveCSS('border-radius', '0px')
+  await expect(firstCanvasMenuItem).toHaveCSS('border-radius', '0px')
+  await expect(firstCanvasMenuItem).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+  await expect(firstCanvasMenuItem).toHaveCSS('border-top-width', '0px')
+  await firstCanvasMenuItem.hover()
+  await expect(firstCanvasMenuItem).toHaveCSS('background-color', 'rgb(23, 23, 23)')
+  await expect(firstCanvasMenuItem).toHaveCSS('color', 'rgba(255, 255, 255, 0.96)')
   await page.mouse.click(10, 10)
 
   await page.goto('/data')
