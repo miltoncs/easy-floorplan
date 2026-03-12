@@ -1181,13 +1181,13 @@ export function FloorplanCanvas() {
                     point: firstSegment.start,
                     onClick: (event: ReactMouseEvent<SVGGElement>) => {
                       event.stopPropagation()
-                      actions.addWallFromAnchor(
-                        activeStructure.id,
-                        activeFloor.id,
-                        selectedRoom.id,
-                        firstSegment.id,
-                        'before',
-                      )
+                      actions.openAnchoredWallAngleDialog({
+                        structureId: activeStructure.id,
+                        floorId: activeFloor.id,
+                        roomId: selectedRoom.id,
+                        segmentId: firstSegment.id,
+                        side: 'before',
+                      })
                     },
                   },
                   {
@@ -1196,12 +1196,13 @@ export function FloorplanCanvas() {
                     point: lastSegment.end,
                     onClick: (event: ReactMouseEvent<SVGGElement>) => {
                       event.stopPropagation()
-                      actions.addWallFromAnchor(
-                        activeStructure.id,
-                        activeFloor.id,
-                        selectedRoom.id,
-                        lastSegment.id,
-                      )
+                      actions.openAnchoredWallAngleDialog({
+                        structureId: activeStructure.id,
+                        floorId: activeFloor.id,
+                        roomId: selectedRoom.id,
+                        segmentId: lastSegment.id,
+                        side: 'after',
+                      })
                     },
                   },
                 ]

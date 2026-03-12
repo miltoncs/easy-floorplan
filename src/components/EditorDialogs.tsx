@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
-import type { CornerGeometry, RotationDirection } from '../types'
+import type { AnchoredWallDialogAnchor, CornerGeometry, Room, RotationDirection } from '../types'
 import {
   findFloorById,
   findFurnitureById,
@@ -96,14 +96,10 @@ export function EditorDialogs() {
       return null
     }
 
-    const subtitle = corner.isExit
-      ? `Adjust the angle between ${corner.incomingLabel} and the next wall you will trace. Enter 0° to 360°; 180° keeps them aligned.`
-      : `Adjust the angle at the corner between ${corner.incomingLabel} and ${corner.outgoingLabel}. Enter 0° to 360°; right 270° equals left 90°.`
-
     return (
       <DialogFrame
         title="Edit corner angle"
-        subtitle={subtitle}
+        subtitle={getCornerDialogSubtitle(corner)}
         onClose={actions.closeDialog}
       >
         <CornerDialogBody
@@ -111,6 +107,63 @@ export function EditorDialogs() {
           corner={corner}
           onCancel={actions.closeDialog}
           onSubmit={(values) => actions.updateCorner(dialog.ids, values)}
+        />
+      </DialogFrame>
+    )
+  }
+
+  if (dialog.kind === 'anchored-wall-angle') {
+    const room = findRoomById(
+      draft,
+      dialog.anchor.structureId,
+      dialog.anchor.floorId,
+      dialog.anchor.roomId,
+    )
+    const corner = room ? getAnchoredWallCorner(room, dialog.anchor) : null
+
+    if (!corner) {
+      return null
+    }
+
+    return (
+      <DialogFrame
+        title="Edit corner angle"
+        subtitle={getCornerDialogSubtitle(corner)}
+        onClose={actions.closeDialog}
+      >
+        <CornerDialogBody
+          key={`${dialog.anchor.roomId}-${dialog.anchor.segmentId}-${dialog.anchor.side}-angle`}
+          corner={corner}
+          onCancel={actions.closeDialog}
+          onSubmit={(values) => {
+            actions.openAnchoredWallDialog(dialog.anchor, values.turn)
+            return {
+              valid: true,
+              error: null,
+            }
+          }}
+          submitLabel="Next"
+        />
+      </DialogFrame>
+    )
+  }
+
+  if (dialog.kind === 'anchored-wall') {
+    return (
+      <DialogFrame
+        title="Edit wall"
+        subtitle="Adjust the wall label, distance, and notes. Corner angles are edited separately."
+        onClose={actions.closeDialog}
+      >
+        <WallDialogBody
+          key={`${dialog.anchor.roomId}-${dialog.anchor.segmentId}-${dialog.anchor.side}-wall`}
+          initialValue={{
+            label: 'Anchored wall',
+            length: 10,
+            notes: '',
+          }}
+          onCancel={actions.closeDialog}
+          onSubmit={(values) => actions.addWallFromAnchor(dialog.anchor, { ...values, turn: dialog.turn })}
         />
       </DialogFrame>
     )
@@ -225,6 +278,36 @@ export function EditorDialogs() {
 
     return ''
   }
+}
+
+function getCornerDialogSubtitle(corner: CornerGeometry) {
+  return corner.isExit
+    ? `Adjust the angle between ${corner.incomingLabel} and the next wall you will trace. Enter 0° to 360°; 180° keeps them aligned.`
+    : `Adjust the angle at the corner between ${corner.incomingLabel} and ${corner.outgoingLabel}. Enter 0° to 360°; right 270° equals left 90°.`
+}
+
+function getAnchoredWallCorner(
+  room: Room,
+  anchor: AnchoredWallDialogAnchor,
+) {
+  if (anchor.side === 'after') {
+    return getRoomCorners(room, { includeExits: true }).find((item) => item.segmentId === anchor.segmentId) ?? null
+  }
+
+  const targetSegment = room.segments.find((item) => item.id === anchor.segmentId)
+
+  if (!targetSegment) {
+    return null
+  }
+
+  return {
+    segmentId: anchor.segmentId,
+    point: targetSegment.startPoint ?? room.anchor,
+    turn: 0,
+    incomingLabel: 'The new wall you add',
+    outgoingLabel: targetSegment.label,
+    isExit: false,
+  } satisfies CornerGeometry
 }
 
 function DialogFrame({
@@ -431,6 +514,7 @@ function CornerDialogBody({
   corner,
   onCancel,
   onSubmit,
+  submitLabel = 'Save angle',
 }: {
   corner: CornerGeometry
   onCancel: () => void
@@ -438,6 +522,7 @@ function CornerDialogBody({
     valid: boolean
     error: string | null
   }
+  submitLabel?: string
 }) {
   const initialDirection: CornerDirection =
     Math.abs(corner.turn) < 0.5 ? 'straight' : corner.turn > 0 ? 'left' : 'right'
@@ -524,7 +609,7 @@ function CornerDialogBody({
           Cancel
         </button>
         <button className="primary-button" type="submit">
-          Save angle
+          {submitLabel}
         </button>
       </div>
     </form>

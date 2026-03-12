@@ -2,6 +2,7 @@ export type EditorMode = 'rooms' | 'furniture' | 'stacked'
 
 export type NamedEntityKind = 'structure' | 'floor' | 'room' | 'furniture'
 export type RotationDirection = 'clockwise' | 'counterclockwise'
+export type WallAnchorSide = 'before' | 'after'
 
 export type Point = {
   x: number
@@ -164,12 +165,33 @@ export type RoomRotationDialogState = {
   ids: EntityIds
 }
 
+export type AnchoredWallDialogAnchor = {
+  structureId: string
+  floorId: string
+  roomId: string
+  segmentId: string
+  side: WallAnchorSide
+}
+
+export type AnchoredWallAngleDialogState = {
+  kind: 'anchored-wall-angle'
+  anchor: AnchoredWallDialogAnchor
+}
+
+export type AnchoredWallDialogState = {
+  kind: 'anchored-wall'
+  anchor: AnchoredWallDialogAnchor
+  turn: number
+}
+
 export type DialogState =
   | RenameDialogState
   | WallDialogState
   | CornerDialogState
   | FurnitureDialogState
   | RoomRotationDialogState
+  | AnchoredWallAngleDialogState
+  | AnchoredWallDialogState
   | null
 
 export type CameraState = {

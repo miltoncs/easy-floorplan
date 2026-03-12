@@ -62,6 +62,7 @@ import {
   serializeExportEnvelope,
 } from '../lib/serialization'
 import type {
+  AnchoredWallDialogAnchor,
   CanvasTarget,
   ContextMenuState,
   DraftState,
@@ -74,15 +75,14 @@ import type {
   RotationDirection,
   Room,
   RoomSuggestion,
+  WallAnchorSide,
 } from '../types'
 
 type EditorContextValue = ReturnType<typeof useCreateEditorContextValue>
 
 const EditorContext = createContext<EditorContextValue | null>(null)
 
-type WallAnchorSide = 'before' | 'after'
 type AssignableCanvasTarget = Extract<CanvasTarget, { kind: 'wall' | 'furniture' }>
-
 function useCreateEditorContextValue(initialDraft?: DraftState) {
   const [state, dispatch] = useReducer(editorReducer, initialDraft, createInitialState)
   const [dismissedSuggestionIds, setDismissedSuggestionIds] = useState<string[]>([])
@@ -333,6 +333,25 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
       dialog: {
         kind: 'room-rotation',
         ids,
+      },
+    })
+
+  const openAnchoredWallAngleDialog = (anchor: AnchoredWallDialogAnchor) =>
+    dispatch({
+      type: 'openDialog',
+      dialog: {
+        kind: 'anchored-wall-angle',
+        anchor,
+      },
+    })
+
+  const openAnchoredWallDialog = (anchor: AnchoredWallDialogAnchor, turn: number) =>
+    dispatch({
+      type: 'openDialog',
+      dialog: {
+        kind: 'anchored-wall',
+        anchor,
+        turn,
       },
     })
 
@@ -587,17 +606,26 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
   }
 
   const addWallFromAnchor = (
-    structureId: string,
-    floorId: string,
-    roomId: string,
-    segmentId: string,
-    side: WallAnchorSide = 'after',
+    anchor: AnchoredWallDialogAnchor,
+    values: Pick<Room['segments'][number], 'label' | 'length' | 'notes'> & { turn: number },
   ) => {
+    const { structureId, floorId, roomId, segmentId, side } = anchor
     const segment = createSegment({
-      label: 'Anchored wall',
-      turn: side === 'before' ? 0 : undefined,
+      label: values.label,
+      length: values.length,
+      notes: values.notes,
+      turn: side === 'before' ? values.turn : undefined,
     })
     const validation = validateProspectiveRoom(state.draft, structureId, floorId, roomId, (room) => {
+      const targetSegment = room.segments.find((item) => item.id === segmentId)
+      if (!targetSegment) {
+        return false
+      }
+
+      if (side === 'after') {
+        targetSegment.turn = values.turn
+      }
+
       return insertWallAtAnchor(room, segmentId, side, segment)
     })
 
@@ -606,40 +634,34 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
       return validation
     }
 
-    startTransition(() => {
-      dispatch({
-        type: 'mutateDraft',
-        recipe: (draft) => {
-          const room = findRoomById(draft, structureId, floorId, roomId)
-          if (!room) {
-            return
-          }
+    mutateDraft((draft) => {
+      const room = findRoomById(draft, structureId, floorId, roomId)
+      if (!room) {
+        return
+      }
 
-          if (!insertWallAtAnchor(room, segmentId, side, segment)) {
-            return
-          }
-          draft.activeStructureId = structureId
-          draft.activeFloorId = floorId
-          draft.selectedRoomId = roomId
-          draft.selectedFurnitureId = null
-        },
-        options: {
-          status: 'New wall anchored to the selected corner.',
-        },
-      })
-      dispatch({
-        type: 'openDialog',
-        dialog: {
-          kind: 'wall',
-          ids: {
-            structureId,
-            floorId,
-            roomId,
-            segmentId: segment.id,
-          },
-        },
-      })
+      const targetSegment = room.segments.find((item) => item.id === segmentId)
+      if (!targetSegment) {
+        return
+      }
+
+      if (side === 'after') {
+        targetSegment.turn = values.turn
+      }
+
+      if (!insertWallAtAnchor(room, segmentId, side, segment)) {
+        return
+      }
+
+      draft.activeStructureId = structureId
+      draft.activeFloorId = floorId
+      draft.selectedRoomId = roomId
+      draft.selectedFurnitureId = null
+    }, {
+      status: 'New wall anchored to the selected corner.',
     })
+
+    dispatch({ type: 'closeDialog' })
 
     return validation
   }
@@ -1318,6 +1340,8 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
     openCornerDialog,
     openFurnitureDialog,
     openRoomRotationDialog,
+    openAnchoredWallAngleDialog,
+    openAnchoredWallDialog,
     closeDialog: () => dispatch({ type: 'closeDialog' }),
     renameEntity,
     updateWall,

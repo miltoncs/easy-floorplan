@@ -310,12 +310,16 @@ describe('workspace interactions', () => {
     expect(screen.getByTestId(`anchor-start-${room.segments[0].id}`)).toBeInTheDocument()
     expect(screen.getByTestId(`anchor-${openEndWall.id}`)).toBeInTheDocument()
     fireEvent.click(screen.getByTestId(`anchor-${openEndWall.id}`))
+    expect(screen.getByRole('dialog')).toHaveTextContent('Edit corner angle')
+    expect(document.querySelectorAll('[data-testid^="wall-hit-"]').length).toBe(wallCount)
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
     expect(screen.getByRole('dialog')).toHaveTextContent('Edit wall')
+    expect(document.querySelectorAll('[data-testid^="wall-hit-"]').length).toBe(wallCount)
+    fireEvent.click(screen.getByRole('button', { name: 'Save wall' }))
     await waitFor(() =>
       expect(document.querySelectorAll('[data-testid^="wall-hit-"]').length).toBe(wallCount + 1),
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
     fireEvent.click(screen.getByRole('button', { name: /^Furniture$/ }))
     expect(screen.queryByTestId(`anchor-start-${room.segments[0].id}`)).not.toBeInTheDocument()
     expect(screen.queryByTestId(`anchor-${openEndWall.id}`)).not.toBeInTheDocument()
@@ -789,7 +793,13 @@ describe('workspace interactions', () => {
     const wallCount = document.querySelectorAll('[data-testid^="wall-hit-"]').length
     fireEvent.click(screen.getByTestId('anchor-start-solo-wall'))
 
+    expect(screen.getByRole('dialog')).toHaveTextContent('Edit corner angle')
+    expect(screen.getByRole('spinbutton', { name: 'Angle (deg)' })).toHaveValue(180)
+    expect(document.querySelectorAll('[data-testid^="wall-hit-"]').length).toBe(wallCount)
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
     expect(screen.getByRole('dialog')).toHaveTextContent('Edit wall')
+    expect(document.querySelectorAll('[data-testid^="wall-hit-"]').length).toBe(wallCount)
+    fireEvent.click(screen.getByRole('button', { name: 'Save wall' }))
     await waitFor(() =>
       expect(document.querySelectorAll('[data-testid^="wall-hit-"]').length).toBe(wallCount + 1),
     )
