@@ -206,6 +206,8 @@ const WHEEL_GESTURE_ANCHOR_TOLERANCE_PX = 48
 const BUTTON_ZOOM_MULTIPLIER = 1.03
 const WALL_HIT_STROKE_WIDTH_PX = 14
 const CORNER_HIT_RADIUS_PX = 10
+const ANCHOR_ACTION_RADIUS_PX = 9
+const ANCHOR_ACTION_CROSS_HALF_PX = 4
 const MIN_HOVER_HITBOX_SCALE = 0.5
 const MAX_HOVER_HITBOX_SCALE = 1.35
 const SUGGESTION_ACTION_WIDTH_PX = 58
@@ -265,6 +267,7 @@ export function FloorplanCanvas() {
   const shapeSuggestions = roomSuggestions.filter(hasSuggestedSegments)
   const canvasMetrics = getCanvasMetrics(viewBox, canvasSize)
   const hoverHitboxScale = getHoverHitboxScale(ui.camera.zoom)
+  const anchorActionScale = getWorldDistanceFromPixels(canvasMetrics, 1)
   const wallHitStrokeWidthPx = WALL_HIT_STROKE_WIDTH_PX * hoverHitboxScale
   const placedMeasurements = ui.measurements.map((measurement) =>
     placeCanvasMeasurement(measurement, viewBox, canvasMetrics, viewRotationQuarterTurns),
@@ -1205,12 +1208,24 @@ export function FloorplanCanvas() {
                   key={anchor.key}
                   className="anchor-action"
                   data-testid={anchor.testId}
-                  transform={`translate(${anchor.point.x} ${-anchor.point.y})`}
+                  transform={`translate(${anchor.point.x} ${-anchor.point.y}) scale(${anchorActionScale})`}
                   onClick={anchor.onClick}
                 >
-                  <circle r={0.34} />
-                  <line x1={-0.14} x2={0.14} y1={0} y2={0} />
-                  <line x1={0} x2={0} y1={-0.14} y2={0.14} />
+                  <circle r={ANCHOR_ACTION_RADIUS_PX} vectorEffect="non-scaling-stroke" />
+                  <line
+                    vectorEffect="non-scaling-stroke"
+                    x1={-ANCHOR_ACTION_CROSS_HALF_PX}
+                    x2={ANCHOR_ACTION_CROSS_HALF_PX}
+                    y1={0}
+                    y2={0}
+                  />
+                  <line
+                    vectorEffect="non-scaling-stroke"
+                    x1={0}
+                    x2={0}
+                    y1={-ANCHOR_ACTION_CROSS_HALF_PX}
+                    y2={ANCHOR_ACTION_CROSS_HALF_PX}
+                  />
                 </g>
               ))
           : null}

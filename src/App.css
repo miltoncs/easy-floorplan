@@ -1937,12 +1937,12 @@
 .anchor-action circle {
   fill: rgba(255, 255, 255, 0.96);
   stroke: rgba(17, 17, 17, 0.82);
-  stroke-width: 0.08;
+  stroke-width: 2;
 }
 
 .anchor-action line {
   stroke: rgba(17, 17, 17, 0.82);
-  stroke-width: 0.08;
+  stroke-width: 2;
   pointer-events: none;
 }
 

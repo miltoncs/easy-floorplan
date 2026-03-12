@@ -272,6 +272,33 @@ test('keeps wall strokes a constant screen width while zooming', async ({ page }
   expect(Math.abs(afterZoom.height - beforeZoom.height)).toBeLessThan(0.35)
 })
 
+test('keeps anchor action icons a constant screen size while zooming', async ({ page }) => {
+  await page.goto('/workspace')
+  await page.waitForLoadState('networkidle')
+
+  const anchorAction = page.locator('[data-testid^="anchor-"]').first()
+  await expect(anchorAction).toBeVisible()
+
+  const beforeZoom = await anchorAction.boundingBox()
+  if (!beforeZoom) {
+    throw new Error('Expected anchor action bounding box before zoom')
+  }
+
+  const zoomInButton = page.getByRole('button', { name: '+' })
+  for (let index = 0; index < 20; index += 1) {
+    await zoomInButton.click()
+  }
+  await expect(page.locator('.toolbar-pill').first()).toHaveText('181%')
+
+  const afterZoom = await anchorAction.boundingBox()
+  if (!afterZoom) {
+    throw new Error('Expected anchor action bounding box after zoom')
+  }
+
+  expect(Math.abs(afterZoom.width - beforeZoom.width)).toBeLessThan(0.75)
+  expect(Math.abs(afterZoom.height - beforeZoom.height)).toBeLessThan(0.75)
+})
+
 function parseViewBox(value: string | null) {
   if (!value) {
     throw new Error('Expected viewBox attribute')
