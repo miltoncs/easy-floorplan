@@ -999,13 +999,16 @@ export function FloorplanCanvas() {
     }
 
     if (completedDrag.kind === 'wall') {
-      handleWallClick({
+      const target: CanvasTarget = {
         kind: 'wall',
         structureId: completedDrag.structureId,
         floorId: completedDrag.floorId,
         roomId: completedDrag.roomId,
         segmentId: completedDrag.segmentId,
-      })
+      }
+
+      selectWallTarget(target)
+      suppressNextTargetClick(target)
       return
     }
 
@@ -1896,17 +1899,15 @@ export function FloorplanCanvas() {
       return
     }
 
+    selectWallTarget(target)
+  }
+
+  function selectWallTarget(target: Extract<CanvasTarget, { kind: 'wall' }>) {
     actions.selectTarget(target)
     setInlineRoomEditor(null)
     setInlineWallEditor(null)
     setInlineFurnitureEditor(null)
     setInlineCornerEditor(null)
-    actions.openWallDialog({
-      structureId: target.structureId,
-      floorId: target.floorId,
-      roomId: target.roomId,
-      segmentId: target.segmentId,
-    })
   }
 
   function handleCornerClick(target: CanvasTarget) {

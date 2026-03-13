@@ -8,7 +8,7 @@ import { formatFeet } from '../lib/geometry'
 import { renderEditor } from '../test/renderEditor'
 
 describe('workspace interactions', () => {
-  it('keeps room naming inline on labels while direct canvas clicks edit walls and corners', async () => {
+  it('keeps room naming inline on labels while direct canvas clicks select walls and edit corners', async () => {
     const draft = createSeedState()
     const livingRoom = draft.structures[0].floors[0].rooms[0]
     const kitchen = draft.structures[0].floors[0].rooms[2]
@@ -34,13 +34,7 @@ describe('workspace interactions', () => {
     fireEvent.click(screen.getByTestId(`wall-hit-${firstWall.id}`))
     expect(screen.getByTestId(`wall-hit-${firstWall.id}`)).toHaveClass('selected')
     expect(screen.getByTestId(`room-segment-${firstWall.id}`)).toHaveClass('selected')
-    expect(screen.getByRole('dialog')).toHaveTextContent('Edit wall')
-    expect(screen.getByDisplayValue(firstWall.label)).toBeInTheDocument()
-    expect(screen.queryByRole('spinbutton', { name: 'Angle (deg)' })).not.toBeInTheDocument()
-    const dialogLength = screen.getByRole('textbox', { name: 'Length (ft)' })
-    fireEvent.change(dialogLength, { target: { value: `12'3"` } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save wall' }))
-    await waitFor(() => expect(screen.getByTestId(`wall-label-${firstWall.id}`)).toHaveTextContent(`12' 3"`))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByTestId(`corner-label-${firstWall.id}`))
     const inlineAngle = screen.getByRole('textbox', { name: 'Corner angle' }) as HTMLInputElement
@@ -481,8 +475,7 @@ describe('workspace interactions', () => {
     expect(centerAfterWheel.y).toBeCloseTo(centerBeforeWheel.y, 5)
   })
 
-  it('keeps wall clicks editable while allowing wall drags to move the connected room outline', async () => {
-    const user = userEvent.setup()
+  it('keeps wall clicks selectable while allowing wall drags to move the connected room outline', async () => {
     const draft = createSeedState()
     const room = draft.structures[0].floors[0].rooms[0]
     const wall = room.segments[0]
@@ -494,8 +487,8 @@ describe('workspace interactions', () => {
     mockCanvasRect(svg)
 
     fireEvent.click(screen.getByTestId(`wall-hit-${wall.id}`))
-    expect(screen.getByRole('dialog')).toHaveTextContent('Edit wall')
-    await user.click(screen.getByRole('button', { name: 'Close' }))
+    expect(screen.getByTestId(`wall-hit-${wall.id}`)).toHaveClass('selected')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 
     const initialRoomLeft = getAnnotationLeft(`room-label-${room.id}`)
 
@@ -1183,9 +1176,11 @@ describe('workspace interactions', () => {
     )
 
     const wallHits = screen.getAllByTestId(/wall-hit-/)
+    const selectedWallHitTestId = wallHits[wallHits.length - 1].getAttribute('data-testid')
+    expect(selectedWallHitTestId).not.toBeNull()
     fireEvent.click(wallHits[wallHits.length - 1])
-    expect(screen.getByRole('dialog')).toHaveTextContent('Edit wall')
-    expect(screen.queryByRole('combobox', { name: 'Measurement source' })).not.toBeInTheDocument()
+    expect(screen.getByTestId(selectedWallHitTestId ?? '')).toHaveClass('selected')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
   it('hides inferred wall previews in furniture mode', async () => {
