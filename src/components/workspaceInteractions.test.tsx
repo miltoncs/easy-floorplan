@@ -896,6 +896,261 @@ describe('workspace interactions', () => {
     expect(Number(screen.getByTestId(`furniture-${furniture.id}`).getAttribute('height'))).toBeCloseTo(1.5)
   })
 
+  it('keeps furniture labels centered on their furniture footprint when space is available', async () => {
+    const draft = createSeedState()
+    const room = createRoom({
+      id: 'label-room',
+      name: 'Label room',
+      anchor: { x: 0, y: 0 },
+      startHeading: 0,
+      segments: [
+        createSegment({ id: 'seg-a', length: 12, turn: -90 }),
+        createSegment({ id: 'seg-b', length: 12, turn: -90 }),
+        createSegment({ id: 'seg-c', length: 12, turn: -90 }),
+        createSegment({ id: 'seg-d', length: 12, turn: -90 }),
+      ],
+      furniture: [
+        createFurniture({
+          id: 'centered-chair',
+          name: 'Chair',
+          x: 3,
+          y: -7,
+          width: 6,
+          depth: 4,
+        }),
+      ],
+    })
+    const furniture = room.furniture[0]
+
+    draft.structures[0].floors[0].rooms = [room]
+    draft.selectedRoomId = room.id
+    draft.selectedFurnitureId = furniture.id
+    draft.editorMode = 'furniture'
+
+    renderEditor({ draft })
+
+    const svg = screen.getByLabelText('Interactive floorplan canvas')
+    mockCanvasRect(svg)
+    fireEvent(window, new Event('resize'))
+
+    await waitFor(() => expect(screen.getByTestId(`furniture-label-${furniture.id}`)).toBeInTheDocument())
+
+    const label = screen.getByTestId(`furniture-label-${furniture.id}`)
+    const labelContainer = label.closest('.canvas-furniture-chip')
+
+    if (!(labelContainer instanceof HTMLElement)) {
+      throw new Error('Expected furniture label chip')
+    }
+
+    const labelPosition = readAbsolutePosition(labelContainer)
+    const furnitureCenter = getScreenPointForWorldPoint(
+      {
+        x: furniture.x + furniture.width / 2,
+        y: furniture.y + furniture.depth / 2,
+      },
+      svg,
+    )
+
+    expect(labelPosition.left).toBeCloseTo(furnitureCenter.x, 1)
+    expect(labelPosition.top).toBeCloseTo(furnitureCenter.y, 1)
+  })
+
+  it('renames furniture inline from its canvas label', async () => {
+    const user = userEvent.setup()
+    const draft = createSeedState()
+    const room = draft.structures[0].floors[0].rooms[0]
+    const furniture = room.furniture[0]
+
+    draft.selectedRoomId = room.id
+    draft.selectedFurnitureId = furniture.id
+    draft.editorMode = 'furniture'
+
+    renderEditor({ draft })
+
+    const svg = screen.getByLabelText('Interactive floorplan canvas')
+    mockCanvasRect(svg)
+    fireEvent(window, new Event('resize'))
+
+    fireEvent.click(screen.getByTestId(`furniture-label-${furniture.id}`))
+
+    const input = screen.getByRole('textbox', { name: 'Furniture name' })
+    expect(input).toHaveValue(furniture.name)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    await user.clear(input)
+    await user.type(input, 'Reading nook')
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    await waitFor(() => expect(screen.getByTestId(`furniture-label-${furniture.id}`)).toHaveTextContent('Reading nook'))
+
+    const savedFurniture = readSavedDraft().structures[0].floors[0].rooms[0].furniture.find(
+      (item: { id: string }) => item.id === furniture.id,
+    )
+    expect(savedFurniture?.name).toBe('Reading nook')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('keeps large furniture labels centered inside their footprint', async () => {
+    const draft = createSeedState()
+    const room = createRoom({
+      id: 'oversized-furniture-room',
+      name: 'Oversized furniture room',
+      anchor: { x: 0, y: 0 },
+      startHeading: 0,
+      segments: [
+        createSegment({ id: 'seg-a', length: 18, turn: -90 }),
+        createSegment({ id: 'seg-b', length: 18, turn: -90 }),
+        createSegment({ id: 'seg-c', length: 18, turn: -90 }),
+        createSegment({ id: 'seg-d', length: 18, turn: -90 }),
+      ],
+      furniture: [
+        createFurniture({
+          id: 'large-item',
+          name: 'Item 1',
+          x: 1,
+          y: -15,
+          width: 15,
+          depth: 15,
+        }),
+      ],
+    })
+    const furniture = room.furniture[0]
+
+    draft.structures[0].floors[0].rooms = [room]
+    draft.selectedRoomId = room.id
+    draft.selectedFurnitureId = furniture.id
+    draft.editorMode = 'furniture'
+
+    renderEditor({ draft })
+
+    const svg = screen.getByLabelText('Interactive floorplan canvas')
+    mockCanvasRect(svg)
+    fireEvent(window, new Event('resize'))
+
+    await waitFor(() => expect(screen.getByTestId(`furniture-label-${furniture.id}`)).toBeInTheDocument())
+
+    const label = screen.getByTestId(`furniture-label-${furniture.id}`)
+    const labelContainer = label.closest('.canvas-furniture-chip')
+
+    if (!(labelContainer instanceof HTMLElement)) {
+      throw new Error('Expected furniture label chip')
+    }
+
+    const labelPosition = readAbsolutePosition(labelContainer)
+    const furnitureCenter = getScreenPointForWorldPoint(
+      {
+        x: furniture.x + furniture.width / 2,
+        y: furniture.y + furniture.depth / 2,
+      },
+      svg,
+    )
+
+    expect(labelPosition.left).toBeCloseTo(furnitureCenter.x, 1)
+    expect(labelPosition.top).toBeCloseTo(furnitureCenter.y, 1)
+  })
+
+  it('deselects furniture when the empty canvas is clicked', async () => {
+    const draft = createSeedState()
+    const room = draft.structures[0].floors[0].rooms[0]
+    const furniture = room.furniture[0]
+
+    draft.selectedRoomId = room.id
+    draft.selectedFurnitureId = furniture.id
+    draft.editorMode = 'furniture'
+
+    renderEditor({ draft })
+
+    const svg = screen.getByLabelText('Interactive floorplan canvas')
+    const canvasEmpty = screen.getByTestId('canvas-empty')
+    mockCanvasRect(svg)
+    mockCanvasRect(canvasEmpty)
+    expect(screen.getByTestId(`furniture-${furniture.id}`)).toHaveClass('selected')
+
+    fireEvent.click(canvasEmpty)
+
+    await waitFor(() => {
+      expect(readSavedDraft().selectedFurnitureId).toBeNull()
+      expect(screen.getByTestId(`furniture-${furniture.id}`)).not.toHaveClass('selected')
+    })
+    expect(readSavedDraft().selectedRoomId).toBe(room.id)
+  })
+
+  it('keeps a furniture label centered through room-label visibility changes', async () => {
+    const user = userEvent.setup()
+    const draft = createSeedState()
+    const room = createRoom({
+      id: 'recenter-room',
+      name: 'Great room',
+      anchor: { x: 0, y: 0 },
+      startHeading: 0,
+      segments: [
+        createSegment({ id: 'seg-a', length: 12, turn: -90 }),
+        createSegment({ id: 'seg-b', length: 12, turn: -90 }),
+        createSegment({ id: 'seg-c', length: 12, turn: -90 }),
+        createSegment({ id: 'seg-d', length: 12, turn: -90 }),
+      ],
+      furniture: [
+        createFurniture({
+          id: 'center-sofa',
+          name: 'couch',
+          x: 3,
+          y: -7,
+          width: 6,
+          depth: 4,
+        }),
+      ],
+    })
+    const furniture = room.furniture[0]
+
+    draft.structures[0].floors[0].rooms = [room]
+    draft.selectedRoomId = room.id
+    draft.selectedFurnitureId = furniture.id
+    draft.editorMode = 'furniture'
+
+    renderEditor({ draft })
+
+    const svg = screen.getByLabelText('Interactive floorplan canvas')
+    mockCanvasRect(svg)
+    fireEvent(window, new Event('resize'))
+
+    await waitFor(() => expect(screen.getByTestId(`furniture-label-${furniture.id}`)).toBeInTheDocument())
+
+    const initialLabel = screen.getByTestId(`furniture-label-${furniture.id}`)
+    const initialContainer = initialLabel.closest('.canvas-furniture-chip')
+
+    if (!(initialContainer instanceof HTMLElement)) {
+      throw new Error('Expected furniture label chip')
+    }
+
+    const furnitureCenter = getScreenPointForWorldPoint(
+      {
+        x: furniture.x + furniture.width / 2,
+        y: furniture.y + furniture.depth / 2,
+      },
+      svg,
+    )
+
+    const initialPosition = readAbsolutePosition(initialContainer)
+    expect(initialPosition.left).toBeCloseTo(furnitureCenter.x, 1)
+    expect(initialPosition.top).toBeCloseTo(furnitureCenter.y, 1)
+
+    await user.click(screen.getByRole('checkbox', { name: 'Labels' }))
+    await user.click(screen.getByRole('checkbox', { name: 'Labels' }))
+
+    await waitFor(() => {
+      const recenteredLabel = screen.getByTestId(`furniture-label-${furniture.id}`)
+      const recenteredContainer = recenteredLabel.closest('.canvas-furniture-chip')
+
+      if (!(recenteredContainer instanceof HTMLElement)) {
+        throw new Error('Expected furniture label chip')
+      }
+
+      const recenteredPosition = readAbsolutePosition(recenteredContainer)
+      expect(recenteredPosition.left).toBeCloseTo(furnitureCenter.x, 1)
+      expect(recenteredPosition.top).toBeCloseTo(furnitureCenter.y, 1)
+    })
+  })
+
   it('renders room-closing suggestions on inferred walls and applies them from the canvas', async () => {
     const draft = createSeedState()
 
@@ -931,6 +1186,32 @@ describe('workspace interactions', () => {
     fireEvent.click(wallHits[wallHits.length - 1])
     expect(screen.getByRole('dialog')).toHaveTextContent('Edit wall')
     expect(screen.queryByRole('combobox', { name: 'Measurement source' })).not.toBeInTheDocument()
+  })
+
+  it('hides inferred wall previews in furniture mode', async () => {
+    const user = userEvent.setup()
+    const draft = createSeedState()
+
+    renderEditor({ draft })
+    const svg = screen.getByLabelText('Interactive floorplan canvas')
+    mockCanvasRect(svg)
+    fireEvent(window, new Event('resize'))
+
+    expect(screen.getAllByTestId(/canvas-suggestion-actions-/).length).toBeGreaterThan(0)
+    expect(screen.getAllByTestId(/suggested-path-/).length).toBeGreaterThan(0)
+    expect(screen.getByText(/dashed preview walls show/i)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Furniture' }))
+
+    expect(screen.queryAllByTestId(/canvas-suggestion-actions-/)).toHaveLength(0)
+    expect(screen.queryAllByTestId(/suggested-path-/)).toHaveLength(0)
+    expect(screen.queryByText(/dashed preview walls show/i)).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Rooms' }))
+
+    await waitFor(() => expect(screen.getAllByTestId(/canvas-suggestion-actions-/).length).toBeGreaterThan(0))
+    expect(screen.getAllByTestId(/suggested-path-/).length).toBeGreaterThan(0)
+    expect(screen.getByText(/dashed preview walls show/i)).toBeInTheDocument()
   })
 
   it('keeps clustered inferred wall action boxes from collapsing onto the same point', () => {
@@ -2044,6 +2325,16 @@ function getViewBoxRect(element: HTMLElement) {
 
   const [x, y, width, height] = viewBox.split(' ').map((value) => Number.parseFloat(value))
   return { x, y, width, height }
+}
+
+function getScreenPointForWorldPoint(point: { x: number; y: number }, svg: HTMLElement) {
+  const rect = svg.getBoundingClientRect()
+  const viewBox = getViewBoxRect(svg)
+
+  return {
+    x: rect.left + ((point.x - viewBox.x) / viewBox.width) * rect.width,
+    y: rect.top + (((-point.y) - viewBox.y) / viewBox.height) * rect.height,
+  }
 }
 
 function getWorldPointFromScreenPoint(

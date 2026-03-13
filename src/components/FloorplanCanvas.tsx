@@ -204,6 +204,12 @@ type InlineRoomEditorState = {
   error: string | null
 }
 
+type InlineFurnitureEditorState = {
+  target: Extract<CanvasTarget, { kind: 'furniture' }>
+  value: string
+  error: string | null
+}
+
 type InlineCornerDirection = 'left' | 'right'
 
 type InlineCornerEditorState = {
@@ -261,6 +267,7 @@ export function FloorplanCanvas() {
   const suppressTargetClickTimerRef = useRef<number | null>(null)
   const inlineRoomInputRef = useRef<HTMLInputElement | null>(null)
   const inlineWallInputRef = useRef<HTMLInputElement | null>(null)
+  const inlineFurnitureInputRef = useRef<HTMLInputElement | null>(null)
   const inlineCornerInputRef = useRef<HTMLInputElement | null>(null)
   const annotationPlacementRef = useRef<Record<string, number>>({})
   const [dragState, setDragState] = useState<DragState>(null)
@@ -270,6 +277,7 @@ export function FloorplanCanvas() {
   const [selectionBox, setSelectionBox] = useState<CanvasRect | null>(null)
   const [inlineRoomEditor, setInlineRoomEditor] = useState<InlineRoomEditorState | null>(null)
   const [inlineWallEditor, setInlineWallEditor] = useState<InlineWallEditorState | null>(null)
+  const [inlineFurnitureEditor, setInlineFurnitureEditor] = useState<InlineFurnitureEditorState | null>(null)
   const [inlineCornerEditor, setInlineCornerEditor] = useState<InlineCornerEditorState | null>(null)
   const [viewRotationQuarterTurns, setViewRotationQuarterTurns] = useState(0)
   const canvasAspectRatio =
@@ -281,6 +289,7 @@ export function FloorplanCanvas() {
   const labelScale = draft.labelFontSize / DEFAULT_LABEL_FONT_SIZE
   const inlineRoomEditorRoomId = inlineRoomEditor?.roomId
   const inlineWallEditorSegmentId = inlineWallEditor?.segmentId
+  const inlineFurnitureEditorFurnitureId = inlineFurnitureEditor?.target.furnitureId
   const inlineCornerEditorSegmentId = inlineCornerEditor?.target.segmentId
   const showSimplifiedDragPreview = Boolean(
     dragState?.moved && (dragState.kind === 'room' || dragState.kind === 'wall'),
@@ -292,6 +301,7 @@ export function FloorplanCanvas() {
   } as CSSProperties
 
   const shapeSuggestions = roomSuggestions.filter(hasSuggestedSegments)
+  const showCanvasInferencePreviews = draft.editorMode !== 'furniture' && draft.showInferred
   const canvasMetrics = getCanvasMetrics(viewBox, canvasSize)
   const hoverHitboxScale = getHoverHitboxScale(ui.camera.zoom)
   const anchorActionScale = getWorldDistanceFromPixels(canvasMetrics, 1)
@@ -313,7 +323,7 @@ export function FloorplanCanvas() {
   const canvasLegendRect = getCanvasLegendRect(viewBox, canvasMetrics)
   const suggestedPreviews = useMemo(
     () =>
-      !showSimplifiedDragPreview && draft.showInferred && selectedRoom
+      !showSimplifiedDragPreview && showCanvasInferencePreviews && selectedRoom
         ? placeSuggestionPreviews(
             shapeSuggestions.map((suggestion) => buildSuggestionPreview(selectedRoom, suggestion)),
             viewBox,
@@ -331,9 +341,9 @@ export function FloorplanCanvas() {
       canvasMetrics,
       canvasModeSwitchRect,
       canvasToolbarRect,
-      draft.showInferred,
       selectedRoom,
       shapeSuggestions,
+      showCanvasInferencePreviews,
       showSimplifiedDragPreview,
       viewRotationQuarterTurns,
       viewBox,
@@ -433,6 +443,59 @@ export function FloorplanCanvas() {
     kind: 'canvas',
     structureId: activeStructure?.id,
     floorId: activeFloor?.id,
+  }
+
+  const clearSelectedFurniture = () => {
+    actions.mutateDraft((draftState) => {
+      draftState.selectedFurnitureId = null
+    }, {
+      touchStructure: false,
+      recordHistory: false,
+    })
+  }
+
+  const handleCanvasBackgroundClick = () => {
+    if (suppressCanvasClickRef.current) {
+      suppressCanvasClickRef.current = false
+      return
+    }
+
+    clearSelectedFurniture()
+    actions.clearSelectionTargets()
+    actions.setFocusedTarget(canvasTarget)
+  }
+
+  const handleCanvasBackgroundPointerDown = (event: ReactPointerEvent<SVGRectElement>) => {
+    clearSelectedFurniture()
+
+    if (event.shiftKey) {
+      actions.clearSelectionTargets()
+      beginDrag(event, {
+        kind: 'selection',
+        pointerId: event.pointerId,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        currentClientX: event.clientX,
+        currentClientY: event.clientY,
+        moved: false,
+      })
+      setSelectionBox(getSelectionRect(event.clientX, event.clientY, event.clientX, event.clientY, event.currentTarget.getBoundingClientRect()))
+      return
+    }
+
+    actions.clearSelectionTargets()
+    beginDrag(event, {
+      kind: 'canvas',
+      pointerId: event.pointerId,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      startOffsetX: ui.camera.offset.x,
+      startOffsetY: ui.camera.offset.y,
+      currentOffsetX: ui.camera.offset.x,
+      currentOffsetY: ui.camera.offset.y,
+      moved: false,
+    })
+    actions.setFocusedTarget(canvasTarget)
   }
 
   const applyWheelZoom = useEffectEvent((clientX: number, clientY: number, deltaY: number) => {
@@ -597,6 +660,15 @@ export function FloorplanCanvas() {
   }, [inlineWallEditorSegmentId])
 
   useEffect(() => {
+    if (!inlineFurnitureEditorFurnitureId) {
+      return
+    }
+
+    inlineFurnitureInputRef.current?.focus()
+    inlineFurnitureInputRef.current?.select()
+  }, [inlineFurnitureEditorFurnitureId])
+
+  useEffect(() => {
     if (!inlineCornerEditorSegmentId) {
       return
     }
@@ -626,6 +698,7 @@ export function FloorplanCanvas() {
   const cancelActiveInteraction = () => {
     setInlineRoomEditor(null)
     setInlineWallEditor(null)
+    setInlineFurnitureEditor(null)
     setInlineCornerEditor(null)
 
     const activeDrag = dragRef.current
@@ -1058,44 +1131,9 @@ export function FloorplanCanvas() {
           y={viewBox.y}
           width={viewBox.width}
           height={viewBox.height}
-          onClick={() => {
-            if (suppressCanvasClickRef.current) {
-              suppressCanvasClickRef.current = false
-              return
-            }
-            actions.clearSelectionTargets()
-            actions.setFocusedTarget(canvasTarget)
-          }}
+          onClick={handleCanvasBackgroundClick}
           onContextMenu={(event) => openContextMenu(event, canvasTarget)}
-          onPointerDown={(event) => {
-            if (event.shiftKey) {
-              actions.clearSelectionTargets()
-              beginDrag(event, {
-                kind: 'selection',
-                pointerId: event.pointerId,
-                clientX: event.clientX,
-                clientY: event.clientY,
-                currentClientX: event.clientX,
-                currentClientY: event.clientY,
-                moved: false,
-              })
-              setSelectionBox(getSelectionRect(event.clientX, event.clientY, event.clientX, event.clientY, event.currentTarget.getBoundingClientRect()))
-              return
-            }
-
-            beginDrag(event, {
-              kind: 'canvas',
-              pointerId: event.pointerId,
-              clientX: event.clientX,
-              clientY: event.clientY,
-              startOffsetX: ui.camera.offset.x,
-              startOffsetY: ui.camera.offset.y,
-              currentOffsetX: ui.camera.offset.x,
-              currentOffsetY: ui.camera.offset.y,
-              moved: false,
-            })
-            actions.setFocusedTarget(canvasTarget)
-          }}
+          onPointerDown={handleCanvasBackgroundPointerDown}
         />
         {!showSimplifiedDragPreview && draft.showGrid ? (
           <rect
@@ -1105,6 +1143,9 @@ export function FloorplanCanvas() {
             width={viewBox.width}
             height={viewBox.height}
             fill="url(#major-grid)"
+            onClick={handleCanvasBackgroundClick}
+            onContextMenu={(event) => openContextMenu(event, canvasTarget)}
+            onPointerDown={handleCanvasBackgroundPointerDown}
           />
         ) : null}
 
@@ -1605,6 +1646,63 @@ export function FloorplanCanvas() {
                     </div>
                   )
                 })()
+              ) : annotation.kind === 'furniture' && annotation.target.kind === 'furniture' ? (
+                (() => {
+                  const furnitureTarget = annotation.target
+                  const editing = inlineFurnitureEditor?.target.furnitureId === furnitureTarget.furnitureId
+                  const invalid = editing && Boolean(inlineFurnitureEditor?.error)
+
+                  return (
+                    <div
+                      className={[className, 'canvas-furniture-chip', editing ? 'editing' : '', invalid ? 'invalid' : '']
+                        .filter(Boolean)
+                        .join(' ')}
+                      key={`${annotation.kind}-${annotation.id}`}
+                      onContextMenu={(event) => openContextMenu(event, furnitureTarget)}
+                      onMouseEnter={() => actions.setHoveredTarget(furnitureTarget)}
+                      onMouseLeave={() => actions.setHoveredTarget(null)}
+                      style={{
+                        left: `${annotation.position.x}px`,
+                        top: `${annotation.position.y}px`,
+                        minWidth: `${annotation.widthPx}px`,
+                      }}
+                    >
+                      {editing ? (
+                        <input
+                          ref={inlineFurnitureInputRef}
+                          aria-label="Furniture name"
+                          className="canvas-furniture-chip__input"
+                          data-testid={`furniture-label-${annotation.id}`}
+                          size={Math.max(8, inlineFurnitureEditor?.value.length ?? annotation.text.length)}
+                          type="text"
+                          value={inlineFurnitureEditor?.value ?? ''}
+                          onBlur={(event) => commitInlineFurnitureEdit(event.currentTarget.value)}
+                          onChange={(event) =>
+                            setInlineFurnitureEditor((current) =>
+                              current && current.target.furnitureId === furnitureTarget.furnitureId
+                                ? {
+                                    ...current,
+                                    value: event.target.value,
+                                    error: null,
+                                  }
+                                : current,
+                            )
+                          }
+                          onKeyDown={handleInlineFurnitureInputKeyDown}
+                        />
+                      ) : (
+                        <button
+                          className="canvas-furniture-chip__value"
+                          data-testid={`furniture-label-${annotation.id}`}
+                          onClick={() => startInlineFurnitureEdit(furnitureTarget)}
+                          type="button"
+                        >
+                          {annotation.text}
+                        </button>
+                      )}
+                    </div>
+                  )
+                })()
               ) : annotation.kind === 'room' && annotation.target.kind === 'room' ? (
                 (() => {
                   const roomTarget = annotation.target
@@ -1801,6 +1899,7 @@ export function FloorplanCanvas() {
     actions.selectTarget(target)
     setInlineRoomEditor(null)
     setInlineWallEditor(null)
+    setInlineFurnitureEditor(null)
     setInlineCornerEditor(null)
     actions.openWallDialog({
       structureId: target.structureId,
@@ -1818,6 +1917,7 @@ export function FloorplanCanvas() {
     actions.selectTarget(target)
     setInlineRoomEditor(null)
     setInlineWallEditor(null)
+    setInlineFurnitureEditor(null)
     setInlineCornerEditor(null)
     actions.openCornerDialog({
       structureId: target.structureId,
@@ -1840,18 +1940,7 @@ export function FloorplanCanvas() {
         startInlineRoomEdit(annotation.target)
         return
       case 'furniture':
-        actions.selectFurniture(
-          annotation.target.structureId,
-          annotation.target.floorId,
-          annotation.target.roomId,
-          annotation.target.furnitureId,
-        )
-        actions.openFurnitureDialog({
-          structureId: annotation.target.structureId,
-          floorId: annotation.target.floorId,
-          roomId: annotation.target.roomId,
-          furnitureId: annotation.target.furnitureId,
-        })
+        startInlineFurnitureEdit(annotation.target)
         return
       case 'wall':
         handleWallClick(annotation.target)
@@ -1897,6 +1986,7 @@ export function FloorplanCanvas() {
     actions.selectTarget(target)
     setInlineRoomEditor(null)
     setInlineCornerEditor(null)
+    setInlineFurnitureEditor(null)
     setInlineWallEditor({
       segmentId: target.segmentId,
       value: formatEditableLength(segment.length),
@@ -1915,6 +2005,7 @@ export function FloorplanCanvas() {
     actions.selectTarget(target)
     setInlineRoomEditor(null)
     setInlineWallEditor(null)
+    setInlineFurnitureEditor(null)
     setInlineCornerEditor({
       target,
       value: String(getCornerAngleBetweenWalls(corner.turn)),
@@ -1972,6 +2063,23 @@ export function FloorplanCanvas() {
     }
 
     setInlineRoomEditor(null)
+  }
+
+  function startInlineFurnitureEdit(target: Extract<CanvasTarget, { kind: 'furniture' }>) {
+    const item = findFurnitureById(draft, target.structureId, target.floorId, target.roomId, target.furnitureId)
+
+    if (!item) {
+      return
+    }
+
+    actions.selectFurniture(target.structureId, target.floorId, target.roomId, target.furnitureId)
+    setInlineWallEditor(null)
+    setInlineCornerEditor(null)
+    setInlineFurnitureEditor({
+      target,
+      value: item.name,
+      error: null,
+    })
   }
 
   function commitInlineWallEdit(nextValue?: string) {
@@ -2049,6 +2157,63 @@ export function FloorplanCanvas() {
     setInlineWallEditor(null)
   }
 
+  function commitInlineFurnitureEdit(nextValue?: string) {
+    if (!inlineFurnitureEditor) {
+      return
+    }
+
+    const target = inlineFurnitureEditor.target
+    const item = findFurnitureById(draft, target.structureId, target.floorId, target.roomId, target.furnitureId)
+
+    if (!item) {
+      setInlineFurnitureEditor(null)
+      return
+    }
+
+    const value = nextValue ?? inlineFurnitureEditor.value
+    const validation = validateName(value)
+
+    if (!validation.valid) {
+      setInlineFurnitureEditor((current) =>
+        current && current.target.furnitureId === target.furnitureId
+          ? {
+              ...current,
+              error: validation.error,
+            }
+          : current,
+      )
+      if (validation.error) {
+        actions.setStatus(validation.error)
+      }
+      return
+    }
+
+    if (item.name === value) {
+      setInlineFurnitureEditor(null)
+      return
+    }
+
+    actions.mutateDraft((draftState) => {
+      const editableItem = findFurnitureById(
+        draftState,
+        target.structureId,
+        target.floorId,
+        target.roomId,
+        target.furnitureId,
+      )
+
+      if (!editableItem) {
+        return
+      }
+
+      editableItem.name = value
+    }, {
+      status: 'Furniture renamed.',
+    })
+
+    setInlineFurnitureEditor(null)
+  }
+
   function commitInlineCornerEdit(nextValue?: string) {
     if (!inlineCornerEditor) {
       return
@@ -2123,6 +2288,19 @@ export function FloorplanCanvas() {
     if (event.key === 'Escape') {
       event.preventDefault()
       setInlineWallEditor(null)
+    }
+  }
+
+  function handleInlineFurnitureInputKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      commitInlineFurnitureEdit(event.currentTarget.value)
+      return
+    }
+
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      setInlineFurnitureEditor(null)
     }
   }
 
@@ -2247,6 +2425,18 @@ export function FloorplanCanvas() {
     )
   }
 
+  function isCanvasBackgroundTarget(target: EventTarget | null) {
+    return (
+      target instanceof Element &&
+      (
+        target.classList.contains('canvas-underlay') ||
+        target.classList.contains('canvas-grid') ||
+        target.classList.contains('blueprint-canvas') ||
+        target.classList.contains('canvas-stage')
+      )
+    )
+  }
+
   function getCanvasPointFromClient(clientX: number, clientY: number) {
     if (!svgRef.current) {
       return null
@@ -2266,7 +2456,16 @@ export function FloorplanCanvas() {
   }
 
   function handleMeasurementPointerDownCapture(event: ReactPointerEvent<HTMLDivElement>) {
-    if (event.button !== 0 || !ui.pendingMeasurementStart || !shouldCaptureMeasurementEvent(event.target)) {
+    if (event.button !== 0) {
+      return
+    }
+
+    if (isCanvasBackgroundTarget(event.target)) {
+      clearSelectedFurniture()
+      actions.clearSelectionTargets()
+    }
+
+    if (!ui.pendingMeasurementStart || !shouldCaptureMeasurementEvent(event.target)) {
       return
     }
 
@@ -2533,7 +2732,7 @@ export function FloorplanCanvas() {
               const furnitureSelected = isTargetSelected(ui.selectionTargets, furnitureTarget)
               const furnitureActive = draft.selectedFurnitureId === item.id || furnitureSelected
               const centerX = item.x + item.width / 2
-              const centerY = item.y - item.depth / 2
+              const centerY = item.y + item.depth / 2
 
               return (
                 <g
@@ -2749,8 +2948,8 @@ function buildSelectableCanvasTargets({
             {
               minX: item.x,
               maxX: item.x + item.width,
-              minY: item.y - item.depth,
-              maxY: item.y,
+              minY: item.y,
+              maxY: item.y + item.depth,
             },
             viewBox,
             canvasMetrics,
@@ -2968,6 +3167,14 @@ function overlapArea(left: CanvasRect, right: CanvasRect) {
   ) * (
     Math.min(left.maxY, right.maxY) - Math.max(left.minY, right.minY)
   )
+}
+
+function getRectArea(rect: CanvasRect) {
+  return Math.max(0, rect.maxX - rect.minX) * Math.max(0, rect.maxY - rect.minY)
+}
+
+function getRectOutsideArea(rect: CanvasRect, container: CanvasRect) {
+  return Math.max(0, getRectArea(rect) - overlapArea(rect, container))
 }
 
 function getWorldDistanceFromPixels(metrics: CanvasMetrics, pixels: number) {
@@ -3672,14 +3879,15 @@ function buildCanvasAnnotations({
     { x: 0, y: -28 },
   ]
   const furnitureOffsets: ScreenPoint[] = [
-    { x: 0, y: -28 },
-    { x: 0, y: 28 },
-    { x: -62, y: 0 },
-    { x: 62, y: 0 },
-    { x: -52, y: -24 },
-    { x: 52, y: -24 },
-    { x: -52, y: 24 },
-    { x: 52, y: 24 },
+    { x: 0, y: 0 },
+    { x: 0, y: -18 },
+    { x: 0, y: 18 },
+    { x: -32, y: 0 },
+    { x: 32, y: 0 },
+    { x: -24, y: -18 },
+    { x: 24, y: -18 },
+    { x: -24, y: 18 },
+    { x: 24, y: 18 },
   ]
 
   visibleFloors.forEach((floor) => {
@@ -3749,10 +3957,25 @@ function buildCanvasAnnotations({
 
       room.furniture.forEach((item) => {
         const furnitureAnchor = worldToScreenPoint(
-          { x: item.x + item.width / 2, y: item.y - item.depth / 2 },
+          { x: item.x + item.width / 2, y: item.y + item.depth / 2 },
           viewBox,
           canvasMetrics,
           viewRotationQuarterTurns,
+        )
+        const furnitureScreenRect = expandRect(
+          getScreenRectFromWorldBounds(
+            {
+              minX: item.x,
+              maxX: item.x + item.width,
+              minY: item.y,
+              maxY: item.y + item.depth,
+            },
+            viewBox,
+            canvasMetrics,
+            viewRotationQuarterTurns,
+          ),
+          4,
+          4,
         )
         const furnitureSize = estimateAnnotationSize('furniture', item.name, labelFontSize)
         const furnitureTarget: CanvasTarget = {
@@ -3771,9 +3994,10 @@ function buildCanvasAnnotations({
           anchor: furnitureAnchor,
           widthPx: furnitureSize.widthPx,
           heightPx: furnitureSize.heightPx,
-          priority: item.id === selectedFurnitureId ? 84 : matchesTarget(hoveredTarget, furnitureTarget) ? 72 : 42,
+          priority: item.id === selectedFurnitureId ? 104 : matchesTarget(hoveredTarget, furnitureTarget) ? 92 : 66,
           required: item.id === selectedFurnitureId,
           candidateOffsets: furnitureOffsets,
+          scoreCandidate: ({ rect }) => getRectOutsideArea(rect, furnitureScreenRect) * 2.5,
         })
       })
     })
@@ -4100,17 +4324,21 @@ function shouldKeepPreviousAnnotationPlacement(
   idealCandidate: { overlap: number; penalty: number; distance: number },
 ) {
   const penaltyTolerance = 140
+  const distanceTolerance = 12
 
   if (previousCandidate.overlap === 0) {
-    return previousCandidate.penalty <= idealCandidate.penalty + penaltyTolerance
+    return (
+      previousCandidate.penalty <= idealCandidate.penalty + penaltyTolerance &&
+      previousCandidate.distance <= idealCandidate.distance + distanceTolerance
+    )
   }
 
   const overlapTolerance = 180
-  const distanceTolerance = 28
+  const overlapDistanceTolerance = 28
 
   return (
     previousCandidate.overlap <= idealCandidate.overlap + overlapTolerance &&
     previousCandidate.penalty <= idealCandidate.penalty + penaltyTolerance &&
-    previousCandidate.distance <= idealCandidate.distance + distanceTolerance
+    previousCandidate.distance <= idealCandidate.distance + overlapDistanceTolerance
   )
 }

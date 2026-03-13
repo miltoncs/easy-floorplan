@@ -27,8 +27,8 @@ export function WorkspacePage() {
   )
   const railSuggestions = roomSuggestions.filter((suggestion) => !suggestion.segmentsToAdd?.length)
   const primaryCanvasSuggestion = canvasSuggestions[0] ?? null
-  const showCanvasSuggestionNote = draft.showInferred && canvasSuggestions.length > 0
-  const showInferenceToggleNote = !draft.showInferred && canvasSuggestions.length > 0
+  const showCanvasSuggestionNote = draft.editorMode !== 'furniture' && draft.showInferred && canvasSuggestions.length > 0
+  const showInferenceToggleNote = draft.editorMode !== 'furniture' && !draft.showInferred && canvasSuggestions.length > 0
   const boxSelectionSummary = summarizeBoxSelection(ui.selectionTargets)
   const [showDrawingTip, setShowDrawingTip] = useState(() => !isDrawingTipDismissed())
   const roomOverview =

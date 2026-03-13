@@ -1250,6 +1250,40 @@
   margin: 0;
 }
 
+.canvas-furniture-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(0.14rem * var(--canvas-label-scale)) calc(0.22rem * var(--canvas-label-scale));
+}
+
+.canvas-furniture-chip.invalid {
+  border-color: rgba(141, 63, 54, 0.36);
+  box-shadow: 0 10px 20px rgba(141, 63, 54, 0.14);
+}
+
+.canvas-furniture-chip__value {
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  cursor: text;
+  padding: calc(0.12rem * var(--canvas-label-scale)) calc(0.28rem * var(--canvas-label-scale));
+}
+
+.canvas-furniture-chip__input {
+  max-width: min(18rem, calc(100vw - 4rem));
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: center;
+  outline: none;
+  padding: calc(0.12rem * var(--canvas-label-scale)) calc(0.18rem * var(--canvas-label-scale));
+}
+
 .canvas-annotation.active {
   border-color: rgba(17, 17, 17, 0.26);
   box-shadow: 0 12px 24px rgba(17, 17, 17, 0.12);
@@ -1280,6 +1314,14 @@
 .canvas-stage--plain-labels .canvas-annotation.invalid,
 .canvas-stage--plain-labels .canvas-wall-chip.editing,
 .canvas-stage--plain-labels .canvas-wall-chip.invalid {
+  background: rgba(255, 255, 255, 0.96);
+  border-color: rgba(17, 17, 17, 0.12);
+  box-shadow: 0 10px 20px rgba(17, 17, 17, 0.08);
+  backdrop-filter: blur(12px);
+}
+
+.canvas-stage--plain-labels .canvas-furniture-chip.editing,
+.canvas-stage--plain-labels .canvas-furniture-chip.invalid {
   background: rgba(255, 255, 255, 0.96);
   border-color: rgba(17, 17, 17, 0.12);
   box-shadow: 0 10px 20px rgba(17, 17, 17, 0.08);
