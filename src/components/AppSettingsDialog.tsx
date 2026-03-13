@@ -104,6 +104,7 @@ export function AppSettingsDialog({
               <div><span>Undo</span><code>Cmd/Ctrl+Z</code></div>
               <div><span>Redo</span><code>Cmd/Ctrl+Shift+Z</code></div>
               <div><span>Redo</span><code>Ctrl+Y</code></div>
+              <div><span>Select all walls</span><code>Cmd/Ctrl+A</code></div>
               <div><span>Canvas menu</span><code>Shift+F10</code></div>
             </div>
           </section>

@@ -2,7 +2,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { createSeedState } from '../data/seed'
-import { createFurniture, createRoom, createSegment } from '../lib/blueprint'
+import { createFloor, createFurniture, createRoom, createSegment } from '../lib/blueprint'
 import { MAX_CAMERA_ZOOM } from '../lib/camera'
 import { formatFeet } from '../lib/geometry'
 import { renderEditor } from '../test/renderEditor'
@@ -1426,6 +1426,228 @@ describe('workspace interactions', () => {
 
     await waitFor(() => expect(screen.getByTestId('box-selection-summary')).toHaveTextContent('3 rooms'))
     expect(screen.getByTestId('box-selection-summary')).toHaveTextContent('10 walls')
+  })
+
+  it('supports Cmd/Ctrl+A to select all visible walls', async () => {
+    const draft = createSeedState()
+    const activeFloor = draft.structures[0].floors[0]
+    const kitchen = activeFloor.rooms[2]
+    const totalWalls = activeFloor.rooms.reduce((sum, room) => sum + room.segments.length, 0)
+
+    draft.selectedRoomId = kitchen.id
+    draft.selectedFurnitureId = null
+
+    renderEditor({ draft })
+
+    fireEvent.keyDown(window, { key: 'a', metaKey: true })
+
+    await waitFor(() => expect(screen.getByTestId('box-selection-summary')).toHaveTextContent(`${totalWalls} walls`))
+    expect(screen.getByRole('heading', { name: kitchen.name })).toBeInTheDocument()
+
+    activeFloor.rooms.flatMap((room) => room.segments).forEach((segment) => {
+      expect(screen.getByTestId(`wall-hit-${segment.id}`)).toHaveClass('selected')
+      expect(screen.getByTestId(`room-segment-${segment.id}`)).toHaveClass('selected')
+    })
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByTestId('box-selection-summary')).not.toBeInTheDocument())
+
+    fireEvent.keyDown(window, { key: 'a', ctrlKey: true })
+    await waitFor(() => expect(screen.getByTestId('box-selection-summary')).toHaveTextContent(`${totalWalls} walls`))
+  })
+
+  it('keeps wall multi-select active when right-clicking the canvas and shows wall group actions', async () => {
+    const draft = createSeedState()
+    const activeFloor = draft.structures[0].floors[0]
+    const totalWalls = activeFloor.rooms.reduce((sum, room) => sum + room.segments.length, 0)
+
+    renderEditor({ draft })
+
+    const svg = screen.getByLabelText('Interactive floorplan canvas')
+    mockCanvasRect(svg)
+
+    fireEvent.keyDown(window, { key: 'a', metaKey: true })
+    await waitFor(() => expect(screen.getByTestId('box-selection-summary')).toHaveTextContent(`${totalWalls} walls`))
+
+    fireEvent.contextMenu(screen.getByTestId('canvas-empty'), {
+      clientX: 320,
+      clientY: 84,
+    })
+
+    const menu = screen.getByRole('menu')
+    expect(within(menu).getByRole('menuitem', { name: 'Delete All' })).toBeInTheDocument()
+    expect(within(menu).getByRole('menuitem', { name: 'Rotate All' })).toBeInTheDocument()
+    expect(within(menu).getByRole('menuitem', { name: 'Assign All to Room' })).toBeInTheDocument()
+    expect(screen.getByTestId('box-selection-summary')).toHaveTextContent(`${totalWalls} walls`)
+
+    activeFloor.rooms.flatMap((room) => room.segments).forEach((segment) => {
+      expect(screen.getByTestId(`wall-hit-${segment.id}`)).toHaveClass('selected')
+    })
+  })
+
+  it('deletes the room when Delete All removes every wall in that room', async () => {
+    const user = userEvent.setup()
+    const draft = createSeedState()
+    const sourceRoom = createRoom({
+      id: 'source-room',
+      name: 'Source room',
+      anchor: { x: 0, y: 0 },
+      startHeading: 0,
+      segments: [
+        createSegment({ id: 'source-wall-a', label: 'Source wall A', length: 8, turn: 90 }),
+        createSegment({ id: 'source-wall-b', label: 'Source wall B', length: 6, turn: 90 }),
+      ],
+      furniture: [],
+    })
+    const receiverRoom = createRoom({
+      id: 'receiver-room',
+      name: 'Receiver room',
+      anchor: { x: 20, y: 0 },
+      startHeading: 0,
+      segments: [
+        createSegment({ id: 'receiver-wall-a', label: 'Receiver wall A', length: 7, turn: 90 }),
+        createSegment({ id: 'receiver-wall-b', label: 'Receiver wall B', length: 5, turn: 90 }),
+      ],
+      furniture: [],
+    })
+
+    const secondFloor = createFloor({
+      id: 'second-floor',
+      name: 'Second floor',
+      elevation: 10,
+      rooms: [receiverRoom],
+    })
+
+    draft.structures[0].floors[0].rooms = [sourceRoom]
+    draft.structures[0].floors = [draft.structures[0].floors[0], secondFloor]
+    draft.activeFloorId = draft.structures[0].floors[0].id
+    draft.selectedRoomId = sourceRoom.id
+    draft.selectedFurnitureId = null
+
+    renderEditor({ draft })
+
+    const svg = screen.getByLabelText('Interactive floorplan canvas')
+    mockCanvasRect(svg)
+
+    fireEvent.keyDown(window, { key: 'a', metaKey: true })
+    await waitFor(() => expect(screen.getByTestId('box-selection-summary')).toHaveTextContent('2 walls'))
+
+    fireEvent.contextMenu(screen.getByTestId('canvas-empty'), {
+      clientX: 320,
+      clientY: 84,
+    })
+    await user.click(screen.getByRole('menuitem', { name: 'Delete All' }))
+
+    await waitFor(() => expect(document.querySelectorAll('[data-testid^="wall-hit-"]').length).toBe(0))
+    expect(screen.queryByTestId('box-selection-summary')).not.toBeInTheDocument()
+
+    const savedStructure = readSavedDraft().structures[0]
+    expect(savedStructure.floors[0].rooms.find((room: { id: string }) => room.id === sourceRoom.id)).toBeUndefined()
+    expect(savedStructure.floors[1].rooms.find((room: { id: string }) => room.id === receiverRoom.id)?.segments).toHaveLength(2)
+  })
+
+  it('rotates all selected walls from the wall group context menu', async () => {
+    const user = userEvent.setup()
+    const draft = createSeedState()
+    const room = createRoom({
+      id: 'rotate-room',
+      name: 'Rotate room',
+      anchor: { x: 0, y: 0 },
+      startHeading: 0,
+      segments: [
+        createSegment({ id: 'rotate-wall-a', label: 'Rotate wall A', length: 8, turn: 90 }),
+        createSegment({ id: 'rotate-wall-b', label: 'Rotate wall B', length: 6, turn: 90 }),
+      ],
+      furniture: [],
+    })
+
+    draft.structures[0].floors[0].rooms = [room]
+    draft.selectedRoomId = room.id
+    draft.selectedFurnitureId = null
+
+    renderEditor({ draft })
+
+    const svg = screen.getByLabelText('Interactive floorplan canvas')
+    mockCanvasRect(svg)
+
+    const beforeWall = getWallLinePosition('rotate-wall-a')
+
+    fireEvent.keyDown(window, { key: 'a', metaKey: true })
+    fireEvent.contextMenu(screen.getByTestId('canvas-empty'), {
+      clientX: 320,
+      clientY: 84,
+    })
+    await user.click(screen.getByRole('menuitem', { name: 'Rotate All' }))
+    await waitFor(() => expect(screen.getByRole('menuitem', { name: '90° ↻' })).toBeInTheDocument())
+    await user.click(screen.getByRole('menuitem', { name: '90° ↻' }))
+
+    await waitFor(() => {
+      const savedRoom = readSavedDraft().structures[0].floors[0].rooms.find((item: { id: string }) => item.id === room.id)
+      expect(savedRoom?.startHeading).toBe(270)
+      expect(savedRoom?.anchor.x).not.toBe(room.anchor.x)
+      expect(savedRoom?.anchor.y).not.toBe(room.anchor.y)
+    })
+
+    const afterWall = getWallLinePosition('rotate-wall-a')
+    expect(afterWall.x1).not.toBe(beforeWall.x1)
+    expect(afterWall.y1).not.toBe(beforeWall.y1)
+  })
+
+  it('assigns all selected walls to the chosen room from the wall group context menu', async () => {
+    const user = userEvent.setup()
+    const draft = createSeedState()
+    const sourceRoom = createRoom({
+      id: 'assign-source-room',
+      name: 'Source room',
+      anchor: { x: 0, y: 0 },
+      startHeading: 0,
+      segments: [
+        createSegment({ id: 'assign-source-wall-a', label: 'Source wall A', length: 8, turn: 90 }),
+        createSegment({ id: 'assign-source-wall-b', label: 'Source wall B', length: 6, turn: 90 }),
+      ],
+      furniture: [],
+    })
+    const receiverRoom = createRoom({
+      id: 'assign-receiver-room',
+      name: 'Receiver room',
+      anchor: { x: 20, y: 0 },
+      startHeading: 0,
+      segments: [
+        createSegment({ id: 'assign-receiver-wall-a', label: 'Receiver wall A', length: 7, turn: 90 }),
+        createSegment({ id: 'assign-receiver-wall-b', label: 'Receiver wall B', length: 5, turn: 90 }),
+      ],
+      furniture: [],
+    })
+
+    draft.structures[0].floors[0].rooms = [sourceRoom, receiverRoom]
+    draft.selectedRoomId = sourceRoom.id
+    draft.selectedFurnitureId = null
+
+    renderEditor({ draft })
+
+    const svg = screen.getByLabelText('Interactive floorplan canvas')
+    mockCanvasRect(svg)
+
+    fireEvent.keyDown(window, { key: 'a', metaKey: true })
+    fireEvent.contextMenu(screen.getByTestId('canvas-empty'), {
+      clientX: 320,
+      clientY: 84,
+    })
+    await user.click(screen.getByRole('menuitem', { name: 'Assign All to Room' }))
+    await waitFor(() => expect(screen.getByRole('menuitem', { name: /Receiver room/ })).toBeInTheDocument())
+    await user.click(screen.getByRole('menuitem', { name: /Receiver room/ }))
+
+    await waitFor(() => {
+      const savedFloor = readSavedDraft().structures[0].floors[0]
+      const savedSourceRoom = savedFloor.rooms.find((room: { id: string }) => room.id === sourceRoom.id)
+      const savedReceiverRoom = savedFloor.rooms.find((room: { id: string }) => room.id === receiverRoom.id)
+
+      expect(savedSourceRoom?.segments).toHaveLength(0)
+      expect(savedReceiverRoom?.segments).toHaveLength(4)
+    })
+
+    expect(screen.getByTestId('box-selection-summary')).toHaveTextContent('4 walls')
+    expect(document.querySelectorAll('[data-testid^="wall-hit-"]').length).toBe(4)
   })
 
   it('opens context menus for structure, floor, room, wall, furniture, and empty canvas targets', async () => {

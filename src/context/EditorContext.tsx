@@ -4,6 +4,7 @@ import {
   startTransition,
   useContext,
   useEffect,
+  useEffectEvent,
   useMemo,
   useReducer,
   useState,
@@ -44,11 +45,16 @@ import {
 import { createInitialState, editorReducer, type MutateDraftOptions } from '../lib/editorState'
 import {
   addPolar,
+  boundsCenter,
   clamp,
+  createEmptyBounds,
   deleteRoomSegmentPreservingGeometry,
+  mergeBounds,
   normalizeAngle,
+  rotatePoint,
   rotateRoom as applyRoomRotation,
   roomToGeometry,
+  round,
   snapFurnitureToRoom,
   validateRoomWalls,
 } from '../lib/geometry'
@@ -83,6 +89,22 @@ type EditorContextValue = ReturnType<typeof useCreateEditorContextValue>
 const EditorContext = createContext<EditorContextValue | null>(null)
 
 type AssignableCanvasTarget = Extract<CanvasTarget, { kind: 'wall' | 'furniture' }>
+type WallTarget = Extract<CanvasTarget, { kind: 'wall' }>
+type RoomTarget = Extract<CanvasTarget, { kind: 'room' }>
+type WallRunSnapshot = {
+  structureId: string
+  floorId: string
+  roomId: string
+  segmentIds: string[]
+  segments: Room['segments']
+  start: Point
+  heading: number
+}
+type WallSelectionSnapshot = {
+  wallTargets: WallTarget[]
+  runs: WallRunSnapshot[]
+  bounds: ReturnType<typeof createEmptyBounds> | null
+}
 function useCreateEditorContextValue(initialDraft?: DraftState) {
   const [state, dispatch] = useReducer(editorReducer, initialDraft, createInitialState)
   const [dismissedSuggestionIds, setDismissedSuggestionIds] = useState<string[]>([])
@@ -90,41 +112,6 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
   useEffect(() => {
     saveDraftState(state.draft)
   }, [state.draft])
-
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        dispatch({ type: 'dismissTransientUi' })
-        dispatch({ type: 'clearSelection' })
-        return
-      }
-
-      if (event.defaultPrevented || event.isComposing || isEditableEventTarget(event.target)) {
-        return
-      }
-
-      if (!(event.metaKey || event.ctrlKey) || event.altKey) {
-        return
-      }
-
-      const key = event.key.toLowerCase()
-
-      if (key === 'z') {
-        event.preventDefault()
-        dispatch({ type: event.shiftKey ? 'redo' : 'undo' })
-        return
-      }
-
-      if (key === 'y' && !event.shiftKey) {
-        event.preventDefault()
-        dispatch({ type: 'redo' })
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [])
-
   const activeStructure = useMemo(() => findActiveStructure(state.draft), [state.draft])
   const activeFloor = useMemo(() => findActiveFloor(state.draft), [state.draft])
   const selectedRoom = useMemo(() => findSelectedRoom(state.draft), [state.draft])
@@ -154,6 +141,23 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
             ? [activeFloor]
             : [],
     [activeFloor, activeStructure, state.draft.activeFloorId, state.draft.editorMode],
+  )
+  const visibleWallTargets = useMemo<WallTarget[]>(
+    () =>
+      !activeStructure
+        ? []
+        : visibleFloors.flatMap((floor) =>
+            floor.rooms.flatMap((room) =>
+              room.segments.map((segment) => ({
+                kind: 'wall',
+                structureId: activeStructure.id,
+                floorId: floor.id,
+                roomId: room.id,
+                segmentId: segment.id,
+              })),
+            ),
+          ),
+    [activeStructure, visibleFloors],
   )
   const viewBounds = useMemo(() => computeVisibleBounds(visibleFloors), [visibleFloors])
   const viewBox = useMemo(
@@ -234,6 +238,213 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
     dispatch({ type: 'setSelectionTargets', targets })
     dispatch({ type: 'setFocusedTarget', target: nextPrimary })
   }
+
+  const getPreferredWallPrimaryTarget = (targets: WallTarget[]) => {
+    const focusedTarget = state.ui.focusedTarget
+
+    if (focusedTarget?.kind === 'wall') {
+      const matchingTarget = targets.find((target) => isSameWallTarget(target, focusedTarget))
+
+      if (matchingTarget) {
+        return matchingTarget
+      }
+    }
+
+    if (selectedRoom) {
+      const selectedRoomWall = targets.find((target) => target.roomId === selectedRoom.id)
+
+      if (selectedRoomWall) {
+        return selectedRoomWall
+      }
+    }
+
+    return targets[0] ?? null
+  }
+
+  const preferredSelectAllWallTarget = getPreferredWallPrimaryTarget(visibleWallTargets)
+
+  const selectAllWalls = () => {
+    if (visibleWallTargets.length === 0) {
+      setStatus('No walls available to select.')
+      return
+    }
+
+    setSelectionTargets(visibleWallTargets, {
+      primaryTarget: preferredSelectAllWallTarget,
+      status: `Selected all ${visibleWallTargets.length} wall${visibleWallTargets.length === 1 ? '' : 's'}.`,
+    })
+  }
+
+  const deleteSelectedWalls = (targets: WallTarget[]) => {
+    const snapshot = getWallSelectionSnapshot(state.draft, targets)
+
+    if (!snapshot || snapshot.wallTargets.length === 0) {
+      setStatus('No walls available to delete.')
+      return
+    }
+
+    mutateDraft((draft) => {
+      deleteSelectedWallTargets(draft, snapshot.wallTargets)
+    }, {
+      status: `Removed ${snapshot.wallTargets.length} wall${snapshot.wallTargets.length === 1 ? '' : 's'}.`,
+    })
+
+    setSelectionTargets([], {
+      primaryTarget: null,
+    })
+  }
+
+  const rotateSelectedWalls = (targets: WallTarget[], values: { degrees: number; direction: RotationDirection }) => {
+    const snapshot = getWallSelectionSnapshot(state.draft, targets)
+
+    if (!snapshot || snapshot.wallTargets.length === 0 || !snapshot.bounds) {
+      setStatus('No walls available to rotate.')
+      return
+    }
+
+    const clampedDegrees = clamp(values.degrees, 0, 360)
+    const effectiveDegrees = clampedDegrees % 360
+
+    if (effectiveDegrees === 0) {
+      setStatus('Wall rotation unchanged.')
+      return
+    }
+
+    const signedDegrees = values.direction === 'clockwise' ? -effectiveDegrees : effectiveDegrees
+    const center = boundsCenter(snapshot.bounds)
+    const placements = snapshot.runs.map((run) => ({
+      ...run,
+      start: (() => {
+        const rotatedStart = rotatePoint(run.start, center, signedDegrees)
+        return {
+          x: round(rotatedStart.x, 4),
+          y: round(rotatedStart.y, 4),
+        }
+      })(),
+      heading: normalizeAngle(run.heading + signedDegrees),
+    }))
+    const preview = structuredClone(state.draft)
+    const validation = validateWallRunPlacement(preview, snapshot.wallTargets, placements)
+
+    if (!validation.valid) {
+      setStatus(validation.error)
+      return
+    }
+
+    mutateDraft((draft) => {
+      applyWallRunPlacements(draft, snapshot.wallTargets, placements)
+    }, {
+      status:
+        effectiveDegrees === 180
+          ? `Rotated ${snapshot.wallTargets.length} walls 180°.`
+          : `Rotated ${snapshot.wallTargets.length} walls ${effectiveDegrees}° ${values.direction}.`,
+    })
+
+    setSelectionTargets(snapshot.wallTargets, {
+      primaryTarget: getPreferredWallPrimaryTarget(snapshot.wallTargets),
+    })
+  }
+
+  const assignSelectedWallsToRoom = (targets: WallTarget[], destination: RoomTarget) => {
+    const destinationRoom = findRoomById(state.draft, destination.structureId, destination.floorId, destination.roomId)
+    const snapshot = getWallSelectionSnapshot(state.draft, targets)
+
+    if (!destinationRoom) {
+      setStatus('Destination room could not be found.')
+      return
+    }
+
+    if (!snapshot || snapshot.wallTargets.length === 0) {
+      setStatus('No walls available to assign.')
+      return
+    }
+
+    const movableWallTargets = snapshot.wallTargets.filter(
+      (target) => !isSameRoomTarget(target, destination),
+    )
+    const placements = snapshot.runs
+      .filter((run) => !isSameRoomTarget(run, destination))
+      .map((run) => ({
+        ...run,
+        structureId: destination.structureId,
+        floorId: destination.floorId,
+        roomId: destination.roomId,
+      }))
+
+    if (movableWallTargets.length === 0) {
+      setStatus(`${destinationRoom.name} already owns those walls.`)
+      return
+    }
+
+    const preview = structuredClone(state.draft)
+    const validation = validateWallRunPlacement(preview, movableWallTargets, placements)
+
+    if (!validation.valid) {
+      setStatus(validation.error)
+      return
+    }
+
+    mutateDraft((draft) => {
+      applyWallRunPlacements(draft, movableWallTargets, placements)
+    }, {
+      status: `Assigned ${movableWallTargets.length} wall${movableWallTargets.length === 1 ? '' : 's'} to ${destinationRoom.name}.`,
+    })
+
+    const nextSelectionTargets = snapshot.wallTargets.map((target) =>
+      isSameRoomTarget(target, destination)
+        ? target
+        : {
+            ...target,
+            structureId: destination.structureId,
+            floorId: destination.floorId,
+            roomId: destination.roomId,
+          },
+    )
+
+    setSelectionTargets(nextSelectionTargets, {
+      primaryTarget: getPreferredWallPrimaryTarget(nextSelectionTargets),
+    })
+  }
+
+  const handleGlobalKeyDown = useEffectEvent((event: KeyboardEvent) => {
+    if (event.key === 'Escape') {
+      dispatch({ type: 'dismissTransientUi' })
+      dispatch({ type: 'clearSelection' })
+      return
+    }
+
+    if (event.defaultPrevented || event.isComposing || isEditableEventTarget(event.target)) {
+      return
+    }
+
+    if (!(event.metaKey || event.ctrlKey) || event.altKey) {
+      return
+    }
+
+    const key = event.key.toLowerCase()
+
+    if (key === 'a' && !event.shiftKey) {
+      event.preventDefault()
+      selectAllWalls()
+      return
+    }
+
+    if (key === 'z') {
+      event.preventDefault()
+      dispatch({ type: event.shiftKey ? 'redo' : 'undo' })
+      return
+    }
+
+    if (key === 'y' && !event.shiftKey) {
+      event.preventDefault()
+      dispatch({ type: 'redo' })
+    }
+  })
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleGlobalKeyDown)
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown)
+  }, [])
 
   const selectStructure = (structureId: string) =>
     selectTarget({ kind: 'structure', structureId })
@@ -1269,6 +1480,9 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
         status: 'Wall removed.',
       })
     },
+    deleteSelectedWalls,
+    rotateSelectedWalls,
+    assignSelectedWallsToRoom,
     clearWalls: () =>
       mutateDraft((draft) => {
         const room = findSelectedRoom(draft)
@@ -1480,6 +1694,286 @@ function targetReferencesDeletedRoom(target: CanvasTarget, deletedRoomIdSet: Set
       return deletedRoomIdSet.has(target.roomId)
     default:
       return false
+  }
+}
+
+function isSameWallTarget(left: WallTarget, right: WallTarget) {
+  return (
+    left.structureId === right.structureId &&
+    left.floorId === right.floorId &&
+    left.roomId === right.roomId &&
+    left.segmentId === right.segmentId
+  )
+}
+
+function isSameRoomTarget(
+  left: { structureId: string; floorId: string; roomId: string },
+  right: { structureId: string; floorId: string; roomId: string },
+) {
+  return left.structureId === right.structureId && left.floorId === right.floorId && left.roomId === right.roomId
+}
+
+function getRoomTargetKey(target: { structureId: string; floorId: string; roomId: string }) {
+  return `${target.structureId}:${target.floorId}:${target.roomId}`
+}
+
+function getWallTargetKey(target: WallTarget) {
+  return `${getRoomTargetKey(target)}:${target.segmentId}`
+}
+
+function getWallSelectionSnapshot(draft: DraftState, targets: WallTarget[]): WallSelectionSnapshot | null {
+  const uniqueTargets = Array.from(new Map(targets.map((target) => [getWallTargetKey(target), target])).values())
+  const targetsByRoom = new Map<string, { target: RoomTarget; selectedSegmentIds: Set<string> }>()
+  let bounds: WallSelectionSnapshot['bounds'] = null
+
+  uniqueTargets.forEach((target) => {
+    const key = getRoomTargetKey(target)
+    const existing = targetsByRoom.get(key)
+
+    if (existing) {
+      existing.selectedSegmentIds.add(target.segmentId)
+      return
+    }
+
+    targetsByRoom.set(key, {
+      target: {
+        kind: 'room',
+        structureId: target.structureId,
+        floorId: target.floorId,
+        roomId: target.roomId,
+      },
+      selectedSegmentIds: new Set([target.segmentId]),
+    })
+  })
+
+  const runs: WallRunSnapshot[] = []
+
+  for (const { target, selectedSegmentIds } of targetsByRoom.values()) {
+    const room = findRoomById(draft, target.structureId, target.floorId, target.roomId)
+
+    if (!room) {
+      return null
+    }
+
+    const geometryById = new Map(roomToGeometry(room).segments.map((segment) => [segment.id, segment]))
+    let currentRun: WallRunSnapshot | null = null
+
+    room.segments.forEach((segment, index) => {
+      const selected = selectedSegmentIds.has(segment.id)
+
+      if (!selected) {
+        if (currentRun) {
+          runs.push(currentRun)
+          currentRun = null
+        }
+        return
+      }
+
+      const geometrySegment = geometryById.get(segment.id)
+
+      if (!geometrySegment) {
+        currentRun = null
+        return
+      }
+
+      const segmentBounds = {
+        minX: Math.min(geometrySegment.start.x, geometrySegment.end.x),
+        minY: Math.min(geometrySegment.start.y, geometrySegment.end.y),
+        maxX: Math.max(geometrySegment.start.x, geometrySegment.end.x),
+        maxY: Math.max(geometrySegment.start.y, geometrySegment.end.y),
+      }
+      bounds = bounds ? mergeBounds(bounds, segmentBounds) : segmentBounds
+
+      const previousSegmentSelected = index > 0 && selectedSegmentIds.has(room.segments[index - 1].id)
+      const startsNewRun = !currentRun || Boolean(segment.startPoint) || !previousSegmentSelected
+
+      if (startsNewRun) {
+        if (currentRun) {
+          runs.push(currentRun)
+        }
+
+        currentRun = {
+          structureId: target.structureId,
+          floorId: target.floorId,
+          roomId: target.roomId,
+          segmentIds: [segment.id],
+          segments: [structuredClone(segment)],
+          start: { ...geometrySegment.start },
+          heading: geometrySegment.heading,
+        }
+        return
+      }
+
+      currentRun.segmentIds.push(segment.id)
+      currentRun.segments.push(structuredClone(segment))
+    })
+
+    if (currentRun) {
+      runs.push(currentRun)
+    }
+  }
+
+  return {
+    wallTargets: uniqueTargets,
+    runs,
+    bounds,
+  }
+}
+
+function removeWallTargetsFromRoom(room: Room, segmentIds: string[]) {
+  const removableIds = new Set(segmentIds)
+  const orderedSegmentIds = room.segments.filter((segment) => removableIds.has(segment.id)).map((segment) => segment.id)
+
+  orderedSegmentIds.forEach((segmentId) => {
+    deleteRoomSegmentPreservingGeometry(room, segmentId)
+  })
+}
+
+function appendWallRunToRoom(room: Room, run: WallRunSnapshot) {
+  if (run.segments.length === 0) {
+    return
+  }
+
+  const nextSegments = run.segments.map((segment, index) => {
+    const nextSegment = createSegment(segment)
+
+    if (index === 0) {
+      if (room.segments.length === 0) {
+        delete nextSegment.startPoint
+        delete nextSegment.startHeading
+      } else {
+        nextSegment.startPoint = { ...run.start }
+        nextSegment.startHeading = run.heading
+      }
+    } else {
+      delete nextSegment.startPoint
+      delete nextSegment.startHeading
+    }
+
+    return nextSegment
+  })
+
+  if (room.segments.length === 0) {
+    room.anchor = { ...run.start }
+    room.startHeading = run.heading
+  }
+
+  room.segments.push(...nextSegments)
+}
+
+function deleteSelectedWallTargets(draft: DraftState, wallTargetsToRemove: WallTarget[]) {
+  const removableTargetsByRoom = new Map<string, { target: RoomTarget; segmentIds: string[] }>()
+
+  wallTargetsToRemove.forEach((target) => {
+    const key = getRoomTargetKey(target)
+    const existing = removableTargetsByRoom.get(key)
+
+    if (existing) {
+      existing.segmentIds.push(target.segmentId)
+      return
+    }
+
+    removableTargetsByRoom.set(key, {
+      target: {
+        kind: 'room',
+        structureId: target.structureId,
+        floorId: target.floorId,
+        roomId: target.roomId,
+      },
+      segmentIds: [target.segmentId],
+    })
+  })
+
+  removableTargetsByRoom.forEach(({ target, segmentIds }) => {
+    const floor = findFloorById(draft, target.structureId, target.floorId)
+    const room = findRoomById(draft, target.structureId, target.floorId, target.roomId)
+
+    if (!floor || !room) {
+      return
+    }
+
+    const removableIds = new Set(segmentIds)
+    const removesWholeRoom = room.segments.length > 0 && room.segments.every((segment) => removableIds.has(segment.id))
+
+    if (removesWholeRoom) {
+      floor.rooms = floor.rooms.filter((item) => item.id !== room.id)
+      return
+    }
+
+    removeWallTargetsFromRoom(room, segmentIds)
+  })
+}
+
+function applyWallRunPlacements(draft: DraftState, wallTargetsToRemove: WallTarget[], placements: WallRunSnapshot[]) {
+  const removableTargetsByRoom = new Map<string, { target: RoomTarget; segmentIds: string[] }>()
+
+  wallTargetsToRemove.forEach((target) => {
+    const key = getRoomTargetKey(target)
+    const existing = removableTargetsByRoom.get(key)
+
+    if (existing) {
+      existing.segmentIds.push(target.segmentId)
+      return
+    }
+
+    removableTargetsByRoom.set(key, {
+      target: {
+        kind: 'room',
+        structureId: target.structureId,
+        floorId: target.floorId,
+        roomId: target.roomId,
+      },
+      segmentIds: [target.segmentId],
+    })
+  })
+
+  removableTargetsByRoom.forEach(({ target, segmentIds }) => {
+    const room = findRoomById(draft, target.structureId, target.floorId, target.roomId)
+
+    if (!room) {
+      return
+    }
+
+    removeWallTargetsFromRoom(room, segmentIds)
+  })
+
+  placements.forEach((placement) => {
+    const room = findRoomById(draft, placement.structureId, placement.floorId, placement.roomId)
+
+    if (!room) {
+      return
+    }
+
+    appendWallRunToRoom(room, placement)
+  })
+}
+
+function validateWallRunPlacement(draft: DraftState, wallTargetsToRemove: WallTarget[], placements: WallRunSnapshot[]) {
+  applyWallRunPlacements(draft, wallTargetsToRemove, placements)
+
+  const affectedRoomKeys = new Set<string>([
+    ...wallTargetsToRemove.map((target) => getRoomTargetKey(target)),
+    ...placements.map((placement) => getRoomTargetKey(placement)),
+  ])
+
+  for (const key of affectedRoomKeys) {
+    const [structureId, floorId, roomId] = key.split(':')
+    const room = findRoomById(draft, structureId, floorId, roomId)
+
+    if (!room) {
+      continue
+    }
+
+    const validation = validateRoomWalls(room)
+
+    if (!validation.valid) {
+      return validation
+    }
+  }
+
+  return {
+    valid: true as const,
+    error: null,
   }
 }
 

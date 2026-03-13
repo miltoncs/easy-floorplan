@@ -1734,9 +1734,14 @@ export function FloorplanCanvas() {
 
   function openContextMenu(event: ReactMouseEvent<Element>, target: CanvasTarget) {
     event.preventDefault()
-    if (target.kind === 'canvas') {
+    const selectedWallCount = ui.selectionTargets.filter((item) => item.kind === 'wall').length
+    const preserveWallGroupSelection = selectedWallCount > 1 && target.kind !== 'structure'
+
+    if (preserveWallGroupSelection && target.kind === 'canvas') {
       actions.setFocusedTarget(target)
-    } else if (!isTargetSelected(ui.selectionTargets, target)) {
+    } else if (target.kind === 'canvas') {
+      actions.setFocusedTarget(target)
+    } else if (!preserveWallGroupSelection && !isTargetSelected(ui.selectionTargets, target)) {
       actions.selectTarget(target)
     }
     actions.openContextMenu({

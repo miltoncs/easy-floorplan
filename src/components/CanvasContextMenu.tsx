@@ -5,10 +5,27 @@ import { findFloorById } from '../lib/blueprint'
 import { getCanvasMenuItems, type CanvasMenuActionId, type CanvasMenuItem } from '../lib/canvasMenu'
 import type { CanvasTarget } from '../types'
 
-type MenuEntry = {
-  item: CanvasMenuItem
+type WallTarget = Extract<CanvasTarget, { kind: 'wall' }>
+type RoomTarget = Extract<CanvasTarget, { kind: 'room' }>
+type MenuActionEntry = {
+  kind: 'action'
+  id: CanvasMenuActionId
+  label: string
+  destructive?: boolean
+  roomId?: string
+  current?: boolean
+  section?: 'contextual' | 'shared'
   target: CanvasTarget
 }
+type MenuSubmenuEntry = {
+  kind: 'submenu'
+  id: string
+  label: string
+  items: MenuActionEntry[]
+  section?: 'contextual' | 'shared'
+  target: CanvasTarget
+}
+type MenuEntry = MenuActionEntry | MenuSubmenuEntry
 
 type AssignableCanvasTarget = Extract<CanvasTarget, { kind: 'wall' | 'furniture' }>
 
@@ -42,25 +59,29 @@ export function CanvasContextMenu() {
   }
 
   const { target, x, y } = ui.contextMenu
+  const selectedWallTargets = getSelectedWallTargets(ui.selectionTargets)
   const canDeleteFloor =
     target.kind === 'floor'
       ? (activeStructure?.floors.length ?? 0) > 1
       : (activeStructure?.floors.length ?? 0) > 1
-  const items: MenuEntry[] = getContextMenuTargets(target).flatMap((menuTarget) =>
-    getCanvasMenuItems(menuTarget, {
-      canDeleteFloor,
-      hasSelectedRoom: Boolean(selectedRoom),
-      canMeasureFromHere: target.kind !== 'structure' && Boolean(ui.contextMenu?.canvasPoint),
-      hasMeasurements: ui.measurements.length > 0 || ui.pendingMeasurementStart !== null,
-      includeMeasurementActions: menuTarget.kind === target.kind && target.kind !== 'structure',
-      assignableRooms: getAssignableRooms(menuTarget),
-    }).map((item) => ({
-      item,
-      target: menuTarget,
-    })),
-  )
-  const contextualItems = items.filter((entry) => entry.item.section !== 'shared')
-  const sharedItems = items.filter((entry) => entry.item.section === 'shared')
+  const items: MenuEntry[] = [
+    ...getWallGroupMenuEntries(target, selectedWallTargets, activeStructure),
+    ...getContextMenuTargets(target).flatMap((menuTarget) =>
+      buildMenuEntries(
+        getCanvasMenuItems(menuTarget, {
+          canDeleteFloor,
+          hasSelectedRoom: Boolean(selectedRoom),
+          canMeasureFromHere: target.kind !== 'structure' && Boolean(ui.contextMenu?.canvasPoint),
+          hasMeasurements: ui.measurements.length > 0 || ui.pendingMeasurementStart !== null,
+          includeMeasurementActions: menuTarget.kind === target.kind && target.kind !== 'structure',
+          assignableRooms: getAssignableRooms(menuTarget),
+        }),
+        menuTarget,
+      ),
+    ),
+  ]
+  const contextualItems = items.filter((entry) => entry.section !== 'shared')
+  const sharedItems = items.filter((entry) => entry.section === 'shared')
   const orderedItems = [...contextualItems, ...sharedItems]
   const showSharedDivider = contextualItems.length > 0 && sharedItems.length > 0
 
@@ -76,8 +97,8 @@ export function CanvasContextMenu() {
       {orderedItems.map((entry, index) => {
         const showDivider = showSharedDivider && index === contextualItems.length
 
-        if (entry.item.kind === 'submenu') {
-          const key = getMenuEntryKey(entry.target, entry.item.id)
+        if (entry.kind === 'submenu') {
+          const key = getMenuEntryKey(entry.target, entry.id)
           const submenuOpen = openSubmenuKey === key
 
           return (
@@ -92,21 +113,24 @@ export function CanvasContextMenu() {
                   type="button"
                   onClick={() => setOpenSubmenuKey(key)}
                 >
-                  <span>{entry.item.label}</span>
+                  <span>{entry.label}</span>
                   <span aria-hidden="true" className="context-menu-item__caret">
                     ▸
                   </span>
                 </button>
                 {submenuOpen ? (
-                  <div aria-label={`${entry.item.label} submenu`} className="canvas-context-submenu" role="menu">
-                    {entry.item.items.map((submenuItem) => (
+                  <div aria-label={`${entry.label} submenu`} className="canvas-context-submenu" role="menu">
+                    {entry.items.map((submenuItem) => (
                       <button
-                        key={getMenuEntryKey(entry.target, `${submenuItem.id}:${submenuItem.roomId ?? submenuItem.label}`)}
+                        key={getMenuEntryKey(
+                          submenuItem.target,
+                          `${submenuItem.id}:${submenuItem.roomId ?? submenuItem.label}`,
+                        )}
                         className={submenuItem.destructive ? 'context-menu-item danger' : 'context-menu-item'}
                         role="menuitem"
                         type="button"
                         onClick={() => {
-                          runMenuAction(submenuItem.id, entry.target, submenuItem.roomId)
+                          runMenuAction(submenuItem.id, submenuItem.target, submenuItem.roomId)
                           actions.closeContextMenu()
                         }}
                       >
@@ -120,22 +144,21 @@ export function CanvasContextMenu() {
           )
         }
 
-        const actionItem = entry.item
-        const key = getMenuEntryKey(entry.target, actionItem.id)
+        const key = getMenuEntryKey(entry.target, entry.id)
 
         return (
           <Fragment key={key}>
             {showDivider ? <div aria-orientation="horizontal" className="context-menu-divider" role="separator" /> : null}
             <button
-              className={actionItem.destructive ? 'context-menu-item danger' : 'context-menu-item'}
+              className={entry.destructive ? 'context-menu-item danger' : 'context-menu-item'}
               role="menuitem"
               type="button"
               onClick={() => {
-                runMenuAction(actionItem.id, entry.target)
+                runMenuAction(entry.id, entry.target)
                 actions.closeContextMenu()
               }}
             >
-              {actionItem.label}
+              {renderMenuItemLabel(entry)}
             </button>
           </Fragment>
         )
@@ -144,6 +167,39 @@ export function CanvasContextMenu() {
   )
 
   function runMenuAction(actionId: CanvasMenuActionId, actionTarget: CanvasTarget, roomId?: string) {
+    if (actionId === 'delete-selected-walls') {
+      actions.deleteSelectedWalls(selectedWallTargets)
+      return
+    }
+
+    if (actionId === 'rotate-selected-walls-clockwise-90') {
+      actions.rotateSelectedWalls(selectedWallTargets, {
+        degrees: 90,
+        direction: 'clockwise',
+      })
+      return
+    }
+
+    if (actionId === 'rotate-selected-walls-counterclockwise-90') {
+      actions.rotateSelectedWalls(selectedWallTargets, {
+        degrees: 90,
+        direction: 'counterclockwise',
+      })
+      return
+    }
+
+    if (actionId === 'rotate-selected-walls-180') {
+      actions.rotateSelectedWalls(selectedWallTargets, {
+        degrees: 180,
+        direction: 'clockwise',
+      })
+      return
+    }
+
+    if (actionId === 'assign-selected-walls-to-room' && actionTarget.kind === 'room') {
+      actions.assignSelectedWallsToRoom(selectedWallTargets, actionTarget)
+      return
+    }
     if (actionId === 'measure-from-here') {
       if (ui.contextMenu?.canvasPoint) {
         actions.startMeasurement(ui.contextMenu.canvasPoint)
@@ -434,4 +490,134 @@ function renderMenuItemLabel(item: Extract<CanvasMenuItem, { kind: 'action' }>) 
       <span>{item.label}</span>
     </span>
   )
+}
+
+function buildMenuEntries(items: CanvasMenuItem[], target: CanvasTarget): MenuEntry[] {
+  return items.map((item) =>
+    item.kind === 'submenu'
+      ? {
+          kind: 'submenu',
+          id: item.id,
+          label: item.label,
+          section: item.section,
+          target,
+          items: item.items.map((submenuItem) => ({
+            ...submenuItem,
+            target,
+          })),
+        }
+      : {
+          ...item,
+          target,
+        },
+  )
+}
+
+function getSelectedWallTargets(targets: CanvasTarget[]): WallTarget[] {
+  return Array.from(
+    new Map(
+      targets
+        .filter((target): target is WallTarget => target.kind === 'wall')
+        .map((target) => [`${target.structureId}:${target.floorId}:${target.roomId}:${target.segmentId}`, target]),
+    ).values(),
+  )
+}
+
+function getAllAssignableRooms(activeStructure: ReturnType<typeof useEditor>['activeStructure']): RoomTarget[] {
+  if (!activeStructure) {
+    return []
+  }
+
+  return activeStructure.floors.flatMap((floor) =>
+    floor.rooms.map((room) => ({
+      kind: 'room' as const,
+      structureId: activeStructure.id,
+      floorId: floor.id,
+      roomId: room.id,
+    })),
+  )
+}
+
+function getWallGroupMenuEntries(
+  target: CanvasTarget,
+  selectedWallTargets: WallTarget[],
+  activeStructure: ReturnType<typeof useEditor>['activeStructure'],
+): MenuEntry[] {
+  if (selectedWallTargets.length <= 1 || target.kind === 'structure') {
+    return []
+  }
+
+  const assignableRooms = getAllAssignableRooms(activeStructure)
+  const showFloorNames = (activeStructure?.floors.length ?? 0) > 1
+  const floorNameById = new Map(activeStructure?.floors.map((floor) => [floor.id, floor.name]) ?? [])
+  const entries: MenuEntry[] = [
+    {
+      kind: 'action',
+      id: 'delete-selected-walls',
+      label: 'Delete All',
+      destructive: true,
+      section: 'contextual',
+      target,
+    },
+    {
+      kind: 'submenu',
+      id: 'rotate-selected-walls',
+      label: 'Rotate All',
+      section: 'contextual',
+      target,
+      items: [
+        {
+          kind: 'action',
+          id: 'rotate-selected-walls-clockwise-90',
+          label: '90° ↻',
+          target,
+        },
+        {
+          kind: 'action',
+          id: 'rotate-selected-walls-counterclockwise-90',
+          label: '90° ↺',
+          target,
+        },
+        {
+          kind: 'action',
+          id: 'rotate-selected-walls-180',
+          label: '180°',
+          target,
+        },
+      ],
+    },
+  ]
+
+  if (assignableRooms.length > 0) {
+    entries.push({
+      kind: 'submenu',
+      id: 'assign-selected-walls',
+      label: 'Assign All to Room',
+      target,
+      items: assignableRooms.map((roomTarget) => ({
+        kind: 'action',
+        id: 'assign-selected-walls-to-room',
+        current: selectedWallTargets.some(
+          (selectedTarget) =>
+            selectedTarget.structureId === roomTarget.structureId &&
+            selectedTarget.floorId === roomTarget.floorId &&
+            selectedTarget.roomId === roomTarget.roomId,
+        ),
+        label: showFloorNames
+          ? `${floorNameById.get(roomTarget.floorId) ?? 'Floor'}: ${getRoomLabel(roomTarget, activeStructure)}`
+          : getRoomLabel(roomTarget, activeStructure),
+        roomId: roomTarget.roomId,
+        target: roomTarget,
+      })),
+    })
+  }
+
+  return entries
+}
+
+function getRoomLabel(target: RoomTarget, activeStructure: ReturnType<typeof useEditor>['activeStructure']) {
+  const floor = activeStructure?.floors.find((item) => item.id === target.floorId)
+  const room = floor?.rooms.find((item) => item.id === target.roomId)
+
+  return room?.name ?? 'Untitled room'
 }
