@@ -915,16 +915,6 @@
     stroke-width 160ms ease;
 }
 
-.wall-hit.hovered {
-  stroke: var(--canvas-highlight-blue-hover);
-  stroke-width: calc(var(--canvas-wall-line-width) * 1.5);
-}
-
-.wall-hit.selected {
-  stroke: var(--canvas-highlight-blue-strong);
-  stroke-width: calc(var(--canvas-wall-line-width) * 2);
-}
-
 .corner-hit {
   fill: transparent;
   cursor: pointer;

@@ -2,7 +2,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { createSeedState } from '../data/seed'
-import { createFloor, createFurniture, createRoom, createSegment } from '../lib/blueprint'
+import { MIN_WALL_STROKE_WIDTH_PX, createFloor, createFurniture, createRoom, createSegment } from '../lib/blueprint'
 import { MAX_CAMERA_ZOOM } from '../lib/camera'
 import { formatFeet } from '../lib/geometry'
 import { renderEditor } from '../test/renderEditor'
@@ -60,6 +60,20 @@ describe('workspace interactions', () => {
     expect(cornerDialog).toHaveTextContent('Edit corner angle')
     expect(screen.getByRole('spinbutton', { name: 'Angle (deg)' })).toHaveValue(120)
     expect(cornerDialog).toHaveTextContent(/\+?120° between walls, left turn/)
+  })
+
+  it('keeps thin walls on an easy-to-hit minimum click target', () => {
+    const draft = createSeedState()
+    const room = draft.structures[0].floors[0].rooms[0]
+    const wall = room.segments[0]
+    draft.wallStrokeWidthPx = MIN_WALL_STROKE_WIDTH_PX
+
+    renderEditor({ draft })
+
+    expect(getWallHitStrokeWidth(wall.id)).toBeGreaterThanOrEqual(16)
+
+    fireEvent.contextMenu(screen.getByTestId(`wall-hit-${wall.id}`))
+    expect(screen.getByRole('menu')).toHaveTextContent('Edit wall measurements')
   })
 
   it('rotates rooms from the room context menu, including the custom rotation dialog', async () => {
@@ -2098,6 +2112,12 @@ function getWallLinePosition(segmentId: string) {
     y1: Number(line.getAttribute('y1')),
     y2: Number(line.getAttribute('y2')),
   }
+}
+
+function getWallHitStrokeWidth(segmentId: string) {
+  const line = screen.getByTestId(`wall-hit-${segmentId}`)
+
+  return Number(line.getAttribute('stroke-width') ?? line.getAttribute('strokeWidth') ?? '0')
 }
 
 function getWallLabelScreenCenter(segmentId: string) {

@@ -226,7 +226,8 @@ const WHEEL_ZOOM_MULTIPLIER = 1.02
 const WHEEL_GESTURE_IDLE_MS = 160
 const WHEEL_GESTURE_ANCHOR_TOLERANCE_PX = 48
 const BUTTON_ZOOM_MULTIPLIER = 1.03
-const WALL_HIT_STROKE_WIDTH_PX = 14
+const MIN_WALL_HIT_STROKE_WIDTH_PX = 16
+const WALL_HIT_STROKE_WIDTH_MULTIPLIER = 4
 const CORNER_HIT_RADIUS_PX = 10
 const ANCHOR_ACTION_RADIUS_PX = 9
 const ANCHOR_ACTION_CROSS_HALF_PX = 4
@@ -294,7 +295,9 @@ export function FloorplanCanvas() {
   const canvasMetrics = getCanvasMetrics(viewBox, canvasSize)
   const hoverHitboxScale = getHoverHitboxScale(ui.camera.zoom)
   const anchorActionScale = getWorldDistanceFromPixels(canvasMetrics, 1)
-  const wallHitStrokeWidthPx = WALL_HIT_STROKE_WIDTH_PX * hoverHitboxScale
+  const wallHitStrokeWidthPx =
+    Math.max(MIN_WALL_HIT_STROKE_WIDTH_PX, draft.wallStrokeWidthPx * WALL_HIT_STROKE_WIDTH_MULTIPLIER) *
+    hoverHitboxScale
   const placedMeasurements = ui.measurements.map((measurement) =>
     placeCanvasMeasurement(measurement, viewBox, canvasMetrics, viewRotationQuarterTurns),
   )
