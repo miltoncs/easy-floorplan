@@ -1377,6 +1377,12 @@
   opacity: 1;
 }
 
+.context-menu-divider {
+  height: 1px;
+  margin: 0.18rem 0;
+  background: linear-gradient(90deg, rgba(17, 17, 17, 0.05), rgba(17, 17, 17, 0.14), rgba(17, 17, 17, 0.05));
+}
+
 .context-menu-item__content {
   display: inline-grid;
   grid-template-columns: 0.7rem 1fr;

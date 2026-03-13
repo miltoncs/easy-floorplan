@@ -36,6 +36,7 @@ export type CanvasMenuActionItem = {
   destructive?: boolean
   roomId?: string
   current?: boolean
+  section?: 'contextual' | 'shared'
 }
 
 export type CanvasMenuSubmenuItem = {
@@ -43,6 +44,7 @@ export type CanvasMenuSubmenuItem = {
   id: string
   label: string
   items: CanvasMenuActionItem[]
+  section?: 'contextual' | 'shared'
 }
 
 export type CanvasMenuItem = CanvasMenuActionItem | CanvasMenuSubmenuItem
@@ -170,5 +172,13 @@ function appendMeasurementItems(
     measurementItems.push({ kind: 'action', id: 'clear-measurements', label: 'Clear All Measurements' })
   }
 
-  return measurementItems.length > 0 ? [...measurementItems, ...items] : items
+  return measurementItems.length > 0
+    ? [
+        ...items,
+        ...measurementItems.map((item) => ({
+          ...item,
+          section: 'shared' as const,
+        })),
+      ]
+    : items
 }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useEditor } from '../context/EditorContext'
 import { findFloorById } from '../lib/blueprint'
@@ -59,6 +59,10 @@ export function CanvasContextMenu() {
       target: menuTarget,
     })),
   )
+  const contextualItems = items.filter((entry) => entry.item.section !== 'shared')
+  const sharedItems = items.filter((entry) => entry.item.section === 'shared')
+  const orderedItems = [...contextualItems, ...sharedItems]
+  const showSharedDivider = contextualItems.length > 0 && sharedItems.length > 0
 
   return (
     <div
@@ -69,49 +73,50 @@ export function CanvasContextMenu() {
       style={{ left: x, top: y }}
       onContextMenu={(event) => event.preventDefault()}
     >
-      {items.map((entry) => {
+      {orderedItems.map((entry, index) => {
+        const showDivider = showSharedDivider && index === contextualItems.length
+
         if (entry.item.kind === 'submenu') {
           const key = getMenuEntryKey(entry.target, entry.item.id)
           const submenuOpen = openSubmenuKey === key
 
           return (
-            <div
-              className="context-menu-submenu"
-              key={key}
-              onMouseEnter={() => setOpenSubmenuKey(key)}
-            >
-              <button
-                aria-expanded={submenuOpen}
-                aria-haspopup="menu"
-                className="context-menu-item context-menu-item--submenu"
-                role="menuitem"
-                type="button"
-                onClick={() => setOpenSubmenuKey(key)}
-              >
-                <span>{entry.item.label}</span>
-                <span aria-hidden="true" className="context-menu-item__caret">
-                  ▸
-                </span>
-              </button>
-              {submenuOpen ? (
-                <div aria-label={`${entry.item.label} submenu`} className="canvas-context-submenu" role="menu">
-                  {entry.item.items.map((submenuItem) => (
-                    <button
-                      key={getMenuEntryKey(entry.target, `${submenuItem.id}:${submenuItem.roomId ?? submenuItem.label}`)}
-                      className={submenuItem.destructive ? 'context-menu-item danger' : 'context-menu-item'}
-                      role="menuitem"
-                      type="button"
-                      onClick={() => {
-                        runMenuAction(submenuItem.id, entry.target, submenuItem.roomId)
-                        actions.closeContextMenu()
-                      }}
-                    >
-                      {renderMenuItemLabel(submenuItem)}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-            </div>
+            <Fragment key={key}>
+              {showDivider ? <div aria-orientation="horizontal" className="context-menu-divider" role="separator" /> : null}
+              <div className="context-menu-submenu" onMouseEnter={() => setOpenSubmenuKey(key)}>
+                <button
+                  aria-expanded={submenuOpen}
+                  aria-haspopup="menu"
+                  className="context-menu-item context-menu-item--submenu"
+                  role="menuitem"
+                  type="button"
+                  onClick={() => setOpenSubmenuKey(key)}
+                >
+                  <span>{entry.item.label}</span>
+                  <span aria-hidden="true" className="context-menu-item__caret">
+                    ▸
+                  </span>
+                </button>
+                {submenuOpen ? (
+                  <div aria-label={`${entry.item.label} submenu`} className="canvas-context-submenu" role="menu">
+                    {entry.item.items.map((submenuItem) => (
+                      <button
+                        key={getMenuEntryKey(entry.target, `${submenuItem.id}:${submenuItem.roomId ?? submenuItem.label}`)}
+                        className={submenuItem.destructive ? 'context-menu-item danger' : 'context-menu-item'}
+                        role="menuitem"
+                        type="button"
+                        onClick={() => {
+                          runMenuAction(submenuItem.id, entry.target, submenuItem.roomId)
+                          actions.closeContextMenu()
+                        }}
+                      >
+                        {renderMenuItemLabel(submenuItem)}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            </Fragment>
           )
         }
 
@@ -119,18 +124,20 @@ export function CanvasContextMenu() {
         const key = getMenuEntryKey(entry.target, actionItem.id)
 
         return (
-          <button
-            key={key}
-            className={actionItem.destructive ? 'context-menu-item danger' : 'context-menu-item'}
-            role="menuitem"
-            type="button"
-            onClick={() => {
-              runMenuAction(actionItem.id, entry.target)
-              actions.closeContextMenu()
-            }}
-          >
-            {actionItem.label}
-          </button>
+          <Fragment key={key}>
+            {showDivider ? <div aria-orientation="horizontal" className="context-menu-divider" role="separator" /> : null}
+            <button
+              className={actionItem.destructive ? 'context-menu-item danger' : 'context-menu-item'}
+              role="menuitem"
+              type="button"
+              onClick={() => {
+                runMenuAction(actionItem.id, entry.target)
+                actions.closeContextMenu()
+              }}
+            >
+              {actionItem.label}
+            </button>
+          </Fragment>
         )
       })}
     </div>
