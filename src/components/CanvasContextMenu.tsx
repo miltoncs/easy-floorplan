@@ -379,11 +379,6 @@ export function CanvasContextMenu() {
       return
     }
 
-    if (actionId === 'add-wall-after' && actionTarget.kind === 'wall') {
-      actions.insertWallAfter(actionTarget.structureId, actionTarget.floorId, actionTarget.roomId, actionTarget.segmentId)
-      return
-    }
-
     if (actionId === 'edit-furniture' && actionTarget.kind === 'furniture') {
       actions.selectFurniture(actionTarget.structureId, actionTarget.floorId, actionTarget.roomId, actionTarget.furnitureId)
       actions.openFurnitureDialog({

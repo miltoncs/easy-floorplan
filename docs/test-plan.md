@@ -12,7 +12,7 @@
 | Right-click structure badge | Open `/workspace` | Right-click the structure badge | Structure context menu appears with rename/export actions | Component + Playwright |
 | Right-click floor label | Open `/workspace` | Right-click a floor label | Floor context menu appears with activate/rename/add/delete actions | Component + Playwright |
 | Right-click room target | Open `/workspace` | Right-click a room label or shape | Room context menu appears with rename/detail/wall/delete actions | Component + Playwright |
-| Right-click wall target | Open `/workspace` | Right-click a wall chip | Wall context menu appears with edit/insert/delete actions | Component + Playwright |
+| Right-click wall target | Open `/workspace` | Right-click a wall chip | Wall context menu appears with edit/assign/delete actions | Component + Playwright |
 | Right-click furniture target | Switch to furniture mode | Right-click furniture | Furniture context menu appears with edit/rename/delete actions | Component + Playwright |
 | Right-click empty canvas | Open `/workspace` | Right-click empty canvas | Canvas context menu appears with add/focus actions | Component + Playwright |
 | Route-based workflow | Open the app root | Navigate between Workspace, Detail, and Data | Each route loads directly and primary controls are visible without scrolling first | Playwright + manual |

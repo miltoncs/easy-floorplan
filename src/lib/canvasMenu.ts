@@ -7,7 +7,6 @@ export type CanvasMenuActionId =
   | 'add-room'
   | 'assign-to-room'
   | 'add-wall'
-  | 'add-wall-after'
   | 'clear-measurements'
   | 'delete-floor'
   | 'delete-furniture'
@@ -125,7 +124,6 @@ export function getCanvasMenuItems(
     case 'wall':
       return appendMeasurementItems([
         { kind: 'action', id: 'edit-wall', label: 'Edit wall measurements' },
-        { kind: 'action', id: 'add-wall-after', label: 'Insert wall after' },
         ...(assignRoomSubmenu ? [assignRoomSubmenu] : []),
         { kind: 'action', id: 'delete-wall', label: 'Delete wall', destructive: true },
       ], options)

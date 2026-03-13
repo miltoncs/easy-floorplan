@@ -1411,50 +1411,6 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
         status: 'Wall added.',
       })
     },
-    insertWallAfter: (structureId: string, floorId: string, roomId: string, segmentId: string) => {
-      const validation = validateProspectiveRoom(state.draft, structureId, floorId, roomId, (room) => {
-        const segmentIndex = room.segments.findIndex((segment) => segment.id === segmentId)
-        if (segmentIndex < 0) {
-          return false
-        }
-
-        room.segments.splice(
-          segmentIndex + 1,
-          0,
-          createSegment({
-            label: `${room.name} wall ${room.segments.length + 1}`,
-          }),
-        )
-        return true
-      })
-
-      if (!validation.valid) {
-        setStatus(validation.error)
-        return
-      }
-
-      mutateDraft((draft) => {
-        const room = findRoomById(draft, structureId, floorId, roomId)
-        if (!room) {
-          return
-        }
-
-        const segmentIndex = room.segments.findIndex((segment) => segment.id === segmentId)
-        if (segmentIndex < 0) {
-          return
-        }
-
-        room.segments.splice(
-          segmentIndex + 1,
-          0,
-          createSegment({
-            label: `${room.name} wall ${room.segments.length + 1}`,
-          }),
-        )
-      }, {
-        status: 'Wall inserted.',
-      })
-    },
     deleteWall: (structureId: string, floorId: string, roomId: string, segmentId: string) => {
       const room = findRoomById(state.draft, structureId, floorId, roomId)
       if (!room || !room.segments.some((segment) => segment.id === segmentId)) {
@@ -1801,6 +1757,10 @@ function getWallSelectionSnapshot(draft: DraftState, targets: WallTarget[]): Wal
           start: { ...geometrySegment.start },
           heading: geometrySegment.heading,
         }
+        return
+      }
+
+      if (!currentRun) {
         return
       }
 
