@@ -2,7 +2,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { createSeedState } from '../data/seed'
-import { MIN_WALL_STROKE_WIDTH_PX, createFloor, createFurniture, createRoom, createSegment } from '../lib/blueprint'
+import { MIN_WALL_STROKE_WIDTH_PX, createFloor, createFurniture, createRoom, createSegment, getRoomSuggestions } from '../lib/blueprint'
 import { MAX_CAMERA_ZOOM } from '../lib/camera'
 import { formatFeet } from '../lib/geometry'
 import { renderEditor } from '../test/renderEditor'
@@ -1301,6 +1301,23 @@ describe('workspace interactions', () => {
     expect(screen.getByTestId(`corner-hover-overlay-${firstCorner.id}`)).toBeInTheDocument()
   })
 
+  it('expands wall length and angle labels to all rooms when the view scope is set to all rooms', async () => {
+    const user = userEvent.setup()
+    const draft = createSeedState()
+    const hall = draft.structures[0].floors[0].rooms[1]
+    const hallWall = hall.segments[0]
+
+    renderEditor({ draft })
+
+    expect(screen.queryByTestId(`wall-label-${hallWall.id}`)).not.toBeInTheDocument()
+    expect(screen.queryByTestId(`corner-hover-overlay-${hallWall.id}`)).not.toBeInTheDocument()
+
+    await user.selectOptions(screen.getByRole('combobox', { name: 'View options room scope' }), 'All Rooms')
+
+    expect(screen.getByTestId(`wall-label-${hallWall.id}`)).toBeInTheDocument()
+    expect(screen.getByTestId(`corner-hover-overlay-${hallWall.id}`)).toBeInTheDocument()
+  })
+
   it('shows an internal angle hover overlay at the corner junction', () => {
     const draft = createSeedState()
     const firstCorner = draft.structures[0].floors[0].rooms[0].segments[0]
@@ -1426,6 +1443,40 @@ describe('workspace interactions', () => {
     ).toBeLessThan(
       getPointToSegmentDistance(bottomLabel, { x: topWall.x1, y: topWall.y1 }, { x: topWall.x2, y: topWall.y2 }),
     )
+  })
+
+  it('shows inferred wall previews for non-selected rooms when the view scope is set to all rooms', async () => {
+    const user = userEvent.setup()
+    const draft = createSeedState()
+    const floor = draft.structures[0].floors[0]
+    const bonusRoom = createRoom({
+      id: 'bonus-room',
+      name: 'Bonus room',
+      anchor: { x: 42, y: 0 },
+      startHeading: 0,
+      segments: [
+        createSegment({ id: 'bonus-a', label: 'A', length: 14, turn: 90 }),
+        createSegment({ id: 'bonus-b', label: 'B', length: 10, turn: 90 }),
+      ],
+      furniture: [],
+    })
+
+    floor.rooms.push(bonusRoom)
+
+    const bonusSuggestion = getRoomSuggestions(bonusRoom, floor).find(
+      (suggestion) => Array.isArray(suggestion.segmentsToAdd) && suggestion.segmentsToAdd.length > 0,
+    )
+
+    expect(bonusSuggestion).toBeTruthy()
+
+    renderEditor({ draft })
+
+    expect(screen.queryByTestId(`suggested-path-${bonusSuggestion!.id}`)).not.toBeInTheDocument()
+
+    await user.selectOptions(screen.getByRole('combobox', { name: 'View options room scope' }), 'All Rooms')
+
+    expect(screen.getByTestId(`suggested-path-${bonusSuggestion!.id}`)).toBeInTheDocument()
+    expect(screen.queryByTestId(`canvas-suggestion-actions-${bonusSuggestion!.id}`)).not.toBeInTheDocument()
   })
 
   it('shrinks wall hover hit widths as the canvas zooms in', async () => {

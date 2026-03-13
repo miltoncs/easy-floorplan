@@ -29,6 +29,7 @@ describe('serialization', () => {
   it('imports legacy raw workspace and structure JSON', () => {
     const draft = createSeedState()
     const legacyDraft = structuredClone(draft) as Record<string, unknown>
+    delete legacyDraft.canvasRoomVisibilityScope
     delete legacyDraft.showWallLabels
     delete legacyDraft.showAngleLabels
     delete legacyDraft.wallStrokeWidthPx
@@ -40,6 +41,7 @@ describe('serialization', () => {
     const structureImport = normalizeImportedJson(draft.structures[0])
 
     expect(workspaceImport.kind).toBe('workspace')
+    expect(workspaceImport.kind === 'workspace' ? workspaceImport.draft.canvasRoomVisibilityScope : null).toBe('selected')
     expect(workspaceImport.kind === 'workspace' ? workspaceImport.draft.showWallLabels : null).toBe(true)
     expect(workspaceImport.kind === 'workspace' ? workspaceImport.draft.showAngleLabels : null).toBe(true)
     expect(workspaceImport.kind === 'workspace' ? workspaceImport.draft.wallStrokeWidthPx : null).toBe(

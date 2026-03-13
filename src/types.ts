@@ -1,4 +1,5 @@
 export type EditorMode = 'rooms' | 'furniture' | 'stacked'
+export type CanvasRoomVisibilityScope = 'all' | 'selected'
 
 export type NamedEntityKind = 'structure' | 'floor' | 'room' | 'furniture'
 export type RotationDirection = 'clockwise' | 'counterclockwise'
@@ -71,6 +72,7 @@ export type DraftState = {
   editorMode: EditorMode
   showGrid: boolean
   showInferred: boolean
+  canvasRoomVisibilityScope: CanvasRoomVisibilityScope
   showRoomFloorLabels: boolean
   showWallLabels: boolean
   showAngleLabels: boolean

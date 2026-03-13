@@ -108,6 +108,7 @@ export function createSeedState(): DraftState {
     editorMode: 'rooms',
     showGrid: true,
     showInferred: true,
+    canvasRoomVisibilityScope: 'selected',
     showRoomFloorLabels: true,
     showWallLabels: true,
     showAngleLabels: true,

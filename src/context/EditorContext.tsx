@@ -69,6 +69,7 @@ import {
 } from '../lib/serialization'
 import type {
   AnchoredWallDialogAnchor,
+  CanvasRoomVisibilityScope,
   CanvasTarget,
   ContextMenuState,
   DraftState,
@@ -1167,6 +1168,13 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
       mutateDraft(
         (draft) => {
           draft.showInferred = checked
+        },
+        { touchStructure: false, recordHistory: false },
+      ),
+    setCanvasRoomVisibilityScope: (scope: CanvasRoomVisibilityScope) =>
+      mutateDraft(
+        (draft) => {
+          draft.canvasRoomVisibilityScope = scope
         },
         { touchStructure: false, recordHistory: false },
       ),

@@ -16,6 +16,7 @@ import {
   findFurnitureById,
   findRoomById,
   findSegmentById,
+  getRoomSuggestions,
   getRoomLabelPoint,
   getViewBox,
 } from '../lib/blueprint'
@@ -37,7 +38,18 @@ import {
   roomToGeometry,
   snapFurnitureToRoom,
 } from '../lib/geometry'
-import type { Bounds, CanvasMeasurement, CanvasTarget, Floor, Point, Room, RoomSuggestion, SuggestionSegment } from '../types'
+import type {
+  Bounds,
+  CanvasMeasurement,
+  CanvasRoomVisibilityScope,
+  CanvasTarget,
+  Floor,
+  Point,
+  Room,
+  RoomGeometry,
+  RoomSuggestion,
+  SuggestionSegment,
+} from '../types'
 
 type DragState =
   | {
@@ -134,6 +146,9 @@ type ScreenSegment = {
 
 type SuggestionPreview = {
   suggestion: RoomSuggestion & { segmentsToAdd: SuggestionSegment[] }
+  floorId: string
+  roomId: string
+  showActions: boolean
   points: Point[]
   anchorPoint: Point
   heading: number
@@ -144,6 +159,12 @@ type PlacedSuggestionPreview = SuggestionPreview & {
   actionPoint: Point
   actionRect: CanvasRect
   actionScreenPoint: ScreenPoint
+}
+
+type RoomGeometryEntry = {
+  floorId: string
+  room: Room
+  geometry: RoomGeometry
 }
 
 type AnnotationKind = 'floor' | 'room' | 'furniture' | 'wall'
@@ -300,7 +321,47 @@ export function FloorplanCanvas() {
     '--canvas-label-scale': String(labelScale),
   } as CSSProperties
 
-  const shapeSuggestions = roomSuggestions.filter(hasSuggestedSegments)
+  const selectedRoomEntry = useMemo(
+    () =>
+      activeFloor && selectedRoom && selectedRoomGeometry
+        ? {
+            floorId: activeFloor.id,
+            room: selectedRoom,
+            geometry: selectedRoomGeometry,
+          }
+        : null,
+    [activeFloor, selectedRoom, selectedRoomGeometry],
+  )
+  const showAllVisibilityRooms = draft.canvasRoomVisibilityScope === 'all'
+  const scopedRoomEntries = useMemo(
+    () =>
+      showAllVisibilityRooms
+        ? visibleFloors.flatMap((floor) =>
+            floor.rooms.map((room) => ({
+              floorId: floor.id,
+              room,
+              geometry: roomToGeometry(room),
+            })),
+          )
+        : selectedRoomEntry
+          ? [selectedRoomEntry]
+          : [],
+    [selectedRoomEntry, showAllVisibilityRooms, visibleFloors],
+  )
+  const wallLabelRooms = useMemo(
+    () => (draft.showWallLabels ? scopedRoomEntries : selectedRoomEntry ? [selectedRoomEntry] : []),
+    [draft.showWallLabels, scopedRoomEntries, selectedRoomEntry],
+  )
+  const angleOverlayRooms = useMemo(
+    () =>
+      draft.showAngleLabels && draft.editorMode !== 'furniture'
+        ? scopedRoomEntries
+        : selectedRoomEntry
+          ? [selectedRoomEntry]
+          : [],
+    [draft.editorMode, draft.showAngleLabels, scopedRoomEntries, selectedRoomEntry],
+  )
+  const shapeSuggestions = useMemo(() => roomSuggestions.filter(hasSuggestedSegments), [roomSuggestions])
   const showCanvasInferencePreviews = draft.editorMode !== 'furniture' && draft.showInferred
   const canvasMetrics = getCanvasMetrics(viewBox, canvasSize)
   const hoverHitboxScale = getHoverHitboxScale(ui.camera.zoom)
@@ -323,9 +384,28 @@ export function FloorplanCanvas() {
   const canvasLegendRect = getCanvasLegendRect(viewBox, canvasMetrics)
   const suggestedPreviews = useMemo(
     () =>
-      !showSimplifiedDragPreview && showCanvasInferencePreviews && selectedRoom
+      !showSimplifiedDragPreview && showCanvasInferencePreviews
         ? placeSuggestionPreviews(
-            shapeSuggestions.map((suggestion) => buildSuggestionPreview(selectedRoom, suggestion)),
+            [
+              ...(selectedRoomEntry
+                ? shapeSuggestions.map((suggestion) =>
+                    buildSuggestionPreview(selectedRoomEntry.room, selectedRoomEntry.floorId, suggestion, true),
+                  )
+                : []),
+              ...(showAllVisibilityRooms
+                ? visibleFloors.flatMap((floor) =>
+                    floor.rooms.flatMap((room) => {
+                      if (selectedRoomEntry && floor.id === selectedRoomEntry.floorId && room.id === selectedRoomEntry.room.id) {
+                        return []
+                      }
+
+                      const suggestion = getPrimaryShapeSuggestion(getRoomSuggestions(room, floor))
+
+                      return suggestion ? [buildSuggestionPreview(room, floor.id, suggestion, false)] : []
+                    }),
+                  )
+                : []),
+            ],
             viewBox,
             canvasMetrics,
             viewRotationQuarterTurns,
@@ -341,12 +421,14 @@ export function FloorplanCanvas() {
       canvasMetrics,
       canvasModeSwitchRect,
       canvasToolbarRect,
-      selectedRoom,
+      selectedRoomEntry,
       shapeSuggestions,
       showCanvasInferencePreviews,
       showSimplifiedDragPreview,
+      showAllVisibilityRooms,
       viewRotationQuarterTurns,
       viewBox,
+      visibleFloors,
     ],
   )
   const reservedAnnotationRects = useMemo(
@@ -354,7 +436,7 @@ export function FloorplanCanvas() {
       expandRect(svgRectToScreenRect(canvasToolbarRect, viewBox, canvasMetrics), 14, 14),
       expandRect(svgRectToScreenRect(canvasModeSwitchRect, viewBox, canvasMetrics), 12, 12),
       expandRect(svgRectToScreenRect(canvasLegendRect, viewBox, canvasMetrics), 12, 12),
-      ...suggestedPreviews.map((preview) =>
+      ...suggestedPreviews.filter((preview) => preview.showActions).map((preview) =>
         expandRect(
           makeCenteredRect(preview.actionScreenPoint.x, preview.actionScreenPoint.y, SUGGESTION_ACTION_WIDTH_PX, SUGGESTION_ACTION_HEIGHT_PX),
           12,
@@ -374,8 +456,7 @@ export function FloorplanCanvas() {
             activeStructureId: activeStructure?.id,
             activeFloorId: activeFloor?.id ?? draft.activeFloorId,
             visibleFloors,
-            selectedRoom,
-            selectedRoomGeometry,
+            wallLabelRooms,
             selectedRoomId: draft.selectedRoomId,
             selectedFurnitureId: draft.selectedFurnitureId,
             showRoomFloorLabels: draft.showRoomFloorLabels,
@@ -404,8 +485,6 @@ export function FloorplanCanvas() {
       draft.showWallLabels,
       inlineWallEditor?.segmentId,
       reservedAnnotationRects,
-      selectedRoom,
-      selectedRoomGeometry,
       showSimplifiedDragPreview,
       ui.focusedTarget,
       ui.hoveredTarget,
@@ -413,15 +492,14 @@ export function FloorplanCanvas() {
       viewRotationQuarterTurns,
       viewBox,
       visibleFloors,
+      wallLabelRooms,
     ],
   )
   const visibleCornerOverlays = showSimplifiedDragPreview
     ? []
     : getVisibleCornerOverlays({
         activeStructureId: activeStructure?.id,
-        activeFloorId: activeFloor?.id ?? draft.activeFloorId,
-        selectedRoom,
-        selectedRoomGeometry,
+        rooms: angleOverlayRooms,
         showAll: draft.showAngleLabels && draft.editorMode !== 'furniture',
         hoveredTarget: ui.hoveredTarget,
         editingSegmentId: inlineCornerEditor?.target.segmentId ?? null,
@@ -1446,6 +1524,18 @@ export function FloorplanCanvas() {
         <>
           <div aria-label="Canvas display toggles" className="canvas-toolbar canvas-toolbar--toggles">
             <div className="canvas-toolbar-group canvas-toolbar-group--toggles">
+              <label className="canvas-toolbar-select">
+                <select
+                  aria-label="View options room scope"
+                  value={draft.canvasRoomVisibilityScope}
+                  onChange={(event) =>
+                    actions.setCanvasRoomVisibilityScope(event.target.value as CanvasRoomVisibilityScope)
+                  }
+                >
+                  <option value="all">All Rooms</option>
+                  <option value="selected">Selected Room</option>
+                </select>
+              </label>
               <label className="toggle">
                 <input checked={draft.showGrid} type="checkbox" onChange={(event) => actions.toggleGrid(event.target.checked)} />
                 <span>Grid</span>
@@ -1798,9 +1888,9 @@ export function FloorplanCanvas() {
         </div>
       ) : null}
 
-      {suggestedPreviews.length > 0 ? (
+      {suggestedPreviews.some((preview) => preview.showActions) ? (
         <div aria-label="Canvas inference suggestions" className="canvas-suggestion-layer">
-          {suggestedPreviews.map((preview) => {
+          {suggestedPreviews.filter((preview) => preview.showActions).map((preview) => {
             const position = toCanvasPercentages(preview.actionPoint, viewBox, viewRotationQuarterTurns)
 
             return (
@@ -3007,7 +3097,29 @@ function hasSuggestedSegments(
   return Array.isArray(suggestion.segmentsToAdd) && suggestion.segmentsToAdd.length > 0
 }
 
-function buildSuggestionPreview(room: Room, suggestion: RoomSuggestion & { segmentsToAdd: SuggestionSegment[] }) {
+function getSuggestionLength(suggestion: RoomSuggestion & { segmentsToAdd: SuggestionSegment[] }) {
+  return suggestion.segmentsToAdd.reduce((sum, segment) => sum + segment.length, 0)
+}
+
+function getPrimaryShapeSuggestion(suggestions: RoomSuggestion[]) {
+  return suggestions.filter(hasSuggestedSegments).reduce<RoomSuggestion & { segmentsToAdd: SuggestionSegment[] } | null>(
+    (best, suggestion) => {
+      if (!best || getSuggestionLength(suggestion) < getSuggestionLength(best)) {
+        return suggestion
+      }
+
+      return best
+    },
+    null,
+  )
+}
+
+function buildSuggestionPreview(
+  room: Room,
+  floorId: string,
+  suggestion: RoomSuggestion & { segmentsToAdd: SuggestionSegment[] },
+  showActions: boolean,
+) {
   const geometry = roomToGeometry(room)
   const points = [geometry.endPoint]
   let heading = geometry.exitHeading
@@ -3047,6 +3159,9 @@ function buildSuggestionPreview(room: Room, suggestion: RoomSuggestion & { segme
 
   return {
     suggestion,
+    floorId,
+    roomId: room.id,
+    showActions,
     points,
     anchorPoint: midpoint(referenceSegment.start, referenceSegment.end),
     heading: referenceSegment.heading,
@@ -3094,7 +3209,7 @@ function getCanvasToolbarRect(
   const right = 16 * metrics.unitX
   const top = 16 * metrics.unitY
   const width = Math.min(420, Math.max(320, metrics.widthPx * 0.4)) * metrics.unitX
-  const height = (metrics.widthPx < 760 ? 116 : 98) * metrics.unitY
+  const height = (metrics.widthPx < 760 ? 172 : 152) * metrics.unitY
   const maxX = viewBox.x + viewBox.width - right
   const minY = viewBox.y + top
 
@@ -3809,8 +3924,7 @@ function buildCanvasAnnotations({
   activeStructureId,
   activeFloorId,
   visibleFloors,
-  selectedRoom,
-  selectedRoomGeometry,
+  wallLabelRooms,
   selectedRoomId,
   selectedFurnitureId,
   showRoomFloorLabels,
@@ -3831,8 +3945,7 @@ function buildCanvasAnnotations({
   activeStructureId?: string
   activeFloorId: string
   visibleFloors: Floor[]
-  selectedRoom: Room | null
-  selectedRoomGeometry: ReturnType<typeof roomToGeometry> | null
+  wallLabelRooms: RoomGeometryEntry[]
   selectedRoomId: string | null
   selectedFurnitureId: string | null
   showRoomFloorLabels: boolean
@@ -4004,54 +4117,56 @@ function buildCanvasAnnotations({
     })
   })
 
-  if (allowHoverWallLabels && selectedRoomGeometry && selectedRoom && activeStructureId && selectedRoomId) {
-    const wallScreenSegments = selectedRoomGeometry.segments.map((segment) => ({
-      id: segment.id,
-      start: worldToScreenPoint(segment.start, viewBox, canvasMetrics, viewRotationQuarterTurns),
-      end: worldToScreenPoint(segment.end, viewBox, canvasMetrics, viewRotationQuarterTurns),
-    }))
-    const wallScreenSegmentsById = new Map(wallScreenSegments.map((segment) => [segment.id, segment]))
-
-    selectedRoomGeometry.segments.forEach((segment) => {
-      const midpointScreen = worldToScreenPoint(midpoint(segment.start, segment.end), viewBox, canvasMetrics, viewRotationQuarterTurns)
-      const wallScreenSegment = wallScreenSegmentsById.get(segment.id)
-
-      if (!wallScreenSegment) {
-        return
-      }
-
-      const wallTarget: CanvasTarget = {
-        kind: 'wall',
-        structureId: activeStructureId,
-        floorId: activeFloorId,
-        roomId: selectedRoomId,
-        segmentId: segment.id,
-      }
-      const wallEditing = editingWallSegmentId === segment.id
-      const wallHovered = matchesTarget(hoveredTarget, wallTarget)
-      const shouldRenderWallLabel = showWallLabels || wallHovered || wallEditing
-
-      if (!shouldRenderWallLabel) {
-        return
-      }
-
-      const wallSize = estimateAnnotationSize('wall', formatFeet(segment.length), labelFontSize)
-      const wallSelected = isTargetSelected(selectionTargets, wallTarget)
-      const wallFocused = matchesTarget(focusedTarget, wallTarget)
-
-      descriptors.push({
+  if (allowHoverWallLabels && activeStructureId) {
+    wallLabelRooms.forEach(({ floorId, room, geometry }) => {
+      const wallScreenSegments = geometry.segments.map((segment) => ({
         id: segment.id,
-        kind: 'wall',
-        text: formatFeet(segment.length),
-        target: wallTarget,
-        anchor: midpointScreen,
-        widthPx: wallSize.widthPx,
-        heightPx: wallSize.heightPx,
-        priority: wallEditing ? 99 : wallSelected || wallFocused ? 94 : wallHovered ? 88 : 76,
-        required: showWallLabels || wallHovered || wallEditing,
-        candidateOffsets: buildWallAnnotationOffsets(wallScreenSegment.start, wallScreenSegment.end),
-        scoreCandidate: ({ position }) =>
-          getWallAnnotationCandidatePenalty(position, wallScreenSegment, wallScreenSegments),
+        start: worldToScreenPoint(segment.start, viewBox, canvasMetrics, viewRotationQuarterTurns),
+        end: worldToScreenPoint(segment.end, viewBox, canvasMetrics, viewRotationQuarterTurns),
+      }))
+      const wallScreenSegmentsById = new Map(wallScreenSegments.map((segment) => [segment.id, segment]))
+
+      geometry.segments.forEach((segment) => {
+        const midpointScreen = worldToScreenPoint(midpoint(segment.start, segment.end), viewBox, canvasMetrics, viewRotationQuarterTurns)
+        const wallScreenSegment = wallScreenSegmentsById.get(segment.id)
+
+        if (!wallScreenSegment) {
+          return
+        }
+
+        const wallTarget: CanvasTarget = {
+          kind: 'wall',
+          structureId: activeStructureId,
+          floorId,
+          roomId: room.id,
+          segmentId: segment.id,
+        }
+        const wallEditing = editingWallSegmentId === segment.id
+        const wallHovered = matchesTarget(hoveredTarget, wallTarget)
+        const shouldRenderWallLabel = showWallLabels || wallHovered || wallEditing
+
+        if (!shouldRenderWallLabel) {
+          return
+        }
+
+        const wallSize = estimateAnnotationSize('wall', formatFeet(segment.length), labelFontSize)
+        const wallSelected = isTargetSelected(selectionTargets, wallTarget)
+        const wallFocused = matchesTarget(focusedTarget, wallTarget)
+
+        descriptors.push({
+          id: segment.id,
+          kind: 'wall',
+          text: formatFeet(segment.length),
+          target: wallTarget,
+          anchor: midpointScreen,
+          widthPx: wallSize.widthPx,
+          heightPx: wallSize.heightPx,
+          priority: wallEditing ? 99 : wallSelected || wallFocused ? 94 : wallHovered ? 88 : 76,
+          required: showWallLabels || wallHovered || wallEditing,
+          candidateOffsets: buildWallAnnotationOffsets(wallScreenSegment.start, wallScreenSegment.end),
+          scoreCandidate: ({ position }) =>
+            getWallAnnotationCandidatePenalty(position, wallScreenSegment, wallScreenSegments),
+        })
       })
     })
   }
@@ -4066,28 +4181,25 @@ function buildCanvasAnnotations({
 
 function buildCornerHoverOverlay({
   activeStructureId,
-  activeFloorId,
-  selectedRoom,
-  selectedRoomGeometry,
+  roomEntry,
   segmentId,
   viewBox,
   canvasMetrics,
   viewRotationQuarterTurns,
 }: {
   activeStructureId?: string
-  activeFloorId: string
-  selectedRoom: Room | null
-  selectedRoomGeometry: ReturnType<typeof roomToGeometry> | null
+  roomEntry: RoomGeometryEntry
   segmentId: string
   viewBox: { x: number; y: number; width: number; height: number }
   canvasMetrics: CanvasMetrics
   viewRotationQuarterTurns: number
 }): HoverCornerOverlay | null {
-  if (!activeStructureId || !selectedRoom || !selectedRoomGeometry) {
+  if (!activeStructureId) {
     return null
   }
 
-  const corners = getRoomCorners(selectedRoom)
+  const { floorId, room, geometry } = roomEntry
+  const corners = getRoomCorners(room)
   const cornerIndex = corners.findIndex((corner) => corner.segmentId === segmentId)
 
   if (cornerIndex < 0) {
@@ -4095,13 +4207,13 @@ function buildCornerHoverOverlay({
   }
 
   const corner = corners[cornerIndex]
-  const previousSegment = selectedRoomGeometry.segments.find((segment) => segment.id === segmentId)
+  const previousSegment = geometry.segments.find((segment) => segment.id === segmentId)
 
   if (!previousSegment) {
     return null
   }
 
-  const nextSegment = corner.isExit ? null : getConnectedNextSegment(selectedRoomGeometry, segmentId)
+  const nextSegment = corner.isExit ? null : getConnectedNextSegment(geometry, segmentId)
   const point = worldToScreenPoint(corner.point, viewBox, canvasMetrics, viewRotationQuarterTurns)
   const incomingStart = worldToScreenPoint(previousSegment.start, viewBox, canvasMetrics, viewRotationQuarterTurns)
   const outgoingEnd = nextSegment
@@ -4126,8 +4238,8 @@ function buildCornerHoverOverlay({
     target: {
       kind: 'corner',
       structureId: activeStructureId,
-      floorId: activeFloorId,
-      roomId: selectedRoom.id,
+      floorId,
+      roomId: room.id,
       segmentId,
     },
     arcPath: hoverArc.arcPath,
@@ -4152,9 +4264,7 @@ function getConnectedNextSegment(geometry: ReturnType<typeof roomToGeometry>, se
 
 function getVisibleCornerOverlays({
   activeStructureId,
-  activeFloorId,
-  selectedRoom,
-  selectedRoomGeometry,
+  rooms,
   showAll,
   hoveredTarget,
   editingSegmentId,
@@ -4163,9 +4273,7 @@ function getVisibleCornerOverlays({
   viewRotationQuarterTurns,
 }: {
   activeStructureId?: string
-  activeFloorId: string
-  selectedRoom: Room | null
-  selectedRoomGeometry: ReturnType<typeof roomToGeometry> | null
+  rooms: RoomGeometryEntry[]
   showAll: boolean
   hoveredTarget: CanvasTarget | null
   editingSegmentId: string | null
@@ -4173,53 +4281,50 @@ function getVisibleCornerOverlays({
   canvasMetrics: CanvasMetrics
   viewRotationQuarterTurns: number
 }) {
-  if (!activeStructureId || !selectedRoom || !selectedRoomGeometry) {
+  if (!activeStructureId || rooms.length === 0) {
     return []
   }
 
   if (showAll) {
-    return getRoomCorners(selectedRoom)
-      .map((corner) =>
-        buildCornerHoverOverlay({
-          activeStructureId,
-          activeFloorId,
-          selectedRoom,
-          selectedRoomGeometry,
-          segmentId: corner.segmentId,
-          viewBox,
-          canvasMetrics,
-          viewRotationQuarterTurns,
-        }),
+    return rooms
+      .flatMap((roomEntry) =>
+        getRoomCorners(roomEntry.room).map((corner) =>
+          buildCornerHoverOverlay({
+            activeStructureId,
+            roomEntry,
+            segmentId: corner.segmentId,
+            viewBox,
+            canvasMetrics,
+            viewRotationQuarterTurns,
+          }),
+        ),
       )
       .filter((overlay): overlay is HoverCornerOverlay => Boolean(overlay))
   }
 
-  const visibleSegmentIds = new Set<string>()
+  return rooms
+    .flatMap((roomEntry) =>
+      getRoomCorners(roomEntry.room)
+        .filter((corner) => {
+          const hoveredCorner =
+            hoveredTarget?.kind === 'corner' &&
+            hoveredTarget.floorId === roomEntry.floorId &&
+            hoveredTarget.roomId === roomEntry.room.id &&
+            hoveredTarget.segmentId === corner.segmentId
+          const editingCorner = editingSegmentId === corner.segmentId
 
-  if (
-    hoveredTarget?.kind === 'corner' &&
-    hoveredTarget.floorId === activeFloorId &&
-    hoveredTarget.roomId === selectedRoom.id
-  ) {
-    visibleSegmentIds.add(hoveredTarget.segmentId)
-  }
-
-  if (editingSegmentId) {
-    visibleSegmentIds.add(editingSegmentId)
-  }
-
-  return Array.from(visibleSegmentIds)
-    .map((segmentId) =>
-      buildCornerHoverOverlay({
-        activeStructureId,
-        activeFloorId,
-        selectedRoom,
-        selectedRoomGeometry,
-        segmentId,
-        viewBox,
-        canvasMetrics,
-        viewRotationQuarterTurns,
-      }),
+          return hoveredCorner || editingCorner
+        })
+        .map((corner) =>
+          buildCornerHoverOverlay({
+            activeStructureId,
+            roomEntry,
+            segmentId: corner.segmentId,
+            viewBox,
+            canvasMetrics,
+            viewRotationQuarterTurns,
+          }),
+        ),
     )
     .filter((overlay): overlay is HoverCornerOverlay => Boolean(overlay))
 }

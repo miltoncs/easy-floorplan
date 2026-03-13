@@ -147,6 +147,9 @@ function isDraftStateLike(value: unknown): value is DraftState {
     typeof value.activeFloorId === 'string' &&
     typeof value.showGrid === 'boolean' &&
     typeof value.showInferred === 'boolean' &&
+    (!('canvasRoomVisibilityScope' in value) ||
+      value.canvasRoomVisibilityScope === 'all' ||
+      value.canvasRoomVisibilityScope === 'selected') &&
     (!('showRoomFloorLabels' in value) || typeof value.showRoomFloorLabels === 'boolean') &&
     (!('showWallLabels' in value) || typeof value.showWallLabels === 'boolean') &&
     (!('showAngleLabels' in value) || typeof value.showAngleLabels === 'boolean') &&

@@ -273,6 +273,9 @@ export function selectTargetInDraft(state: DraftState, target: CanvasTarget) {
 export function normalizeDraftCanvasSettings(state: DraftState) {
   const draftWithLegacyScale = state as DraftState & { wallStrokeScale?: unknown }
 
+  if (state.canvasRoomVisibilityScope !== 'all' && state.canvasRoomVisibilityScope !== 'selected') {
+    state.canvasRoomVisibilityScope = 'selected'
+  }
   if (typeof state.showRoomFloorLabels !== 'boolean') {
     state.showRoomFloorLabels = true
   }
