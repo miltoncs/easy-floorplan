@@ -1060,9 +1060,8 @@ export function FloorplanCanvas() {
               suppressCanvasClickRef.current = false
               return
             }
-            actions.clearSelection({
-              focusedTarget: canvasTarget,
-            })
+            actions.clearSelectionTargets()
+            actions.setFocusedTarget(canvasTarget)
           }}
           onContextMenu={(event) => openContextMenu(event, canvasTarget)}
           onPointerDown={(event) => {

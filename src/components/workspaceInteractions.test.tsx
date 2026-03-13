@@ -249,7 +249,7 @@ describe('workspace interactions', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
-  it('deselects the current room on escape and empty-canvas clicks', async () => {
+  it('deselects the current room on escape but keeps canvas labels visible on empty-canvas clicks', async () => {
     const draft = createSeedState()
     const room = draft.structures[0].floors[0].rooms[0]
 
@@ -267,11 +267,13 @@ describe('workspace interactions', () => {
 
     await waitFor(() => expect(screen.getByRole('heading', { name: room.name })).toBeInTheDocument())
     expect(screen.getByTestId(`room-layer-${room.id}`)).toHaveClass('active')
+    expect(screen.getByTestId(`wall-label-${room.segments[0].id}`)).toBeInTheDocument()
 
     fireEvent.click(screen.getByTestId('canvas-empty'))
 
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'No room selected' })).toBeInTheDocument())
-    expect(screen.getByTestId(`room-layer-${room.id}`)).not.toHaveClass('active')
+    await waitFor(() => expect(screen.getByRole('heading', { name: room.name })).toBeInTheDocument())
+    expect(screen.getByTestId(`room-layer-${room.id}`)).toHaveClass('active')
+    expect(screen.getByTestId(`wall-label-${room.segments[0].id}`)).toBeInTheDocument()
   })
 
   it('supports wheel zoom, room and furniture dragging, and wall anchors', async () => {
