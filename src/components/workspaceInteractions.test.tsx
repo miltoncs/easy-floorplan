@@ -2174,7 +2174,8 @@ describe('workspace interactions', () => {
 
     renderEditor({ draft })
 
-    fireEvent.click(screen.getByTestId(`wall-hit-${wall.id}`))
+    fireEvent.contextMenu(screen.getByTestId(`wall-hit-${wall.id}`))
+    await user.click(screen.getByRole('menuitem', { name: 'Edit wall measurements' }))
     expect(screen.getByRole('dialog')).toHaveTextContent('Edit wall')
 
     await user.selectOptions(screen.getByRole('combobox', { name: 'Room' }), hall.id)
