@@ -2407,7 +2407,7 @@ describe('workspace interactions', () => {
     expect(screen.queryByTestId(`wall-label-${firstWall.id}`)).not.toBeInTheDocument()
   })
 
-  it('blocks wall edits that would create intersecting walls', async () => {
+  it('allows wall edits that create intersecting walls', async () => {
     const user = userEvent.setup()
     const draft = createSeedState()
     const room = draft.structures[0].floors[0].rooms[0]
@@ -2431,8 +2431,13 @@ describe('workspace interactions', () => {
     await user.type(angleInput, '0')
     await user.click(screen.getByRole('button', { name: 'Save angle' }))
 
-    expect(screen.getByRole('dialog')).toHaveTextContent('Walls cannot intersect.')
-    expect(screen.getByDisplayValue('0')).toBeInTheDocument()
+    await waitFor(() => {
+      const savedSegment = readSavedDraft().structures[0].floors[0].rooms[0].segments.find(
+        (item: { id: string }) => item.id === 'seg-b',
+      )
+      expect(savedSegment?.turn).toBe(-180)
+    })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 })
 

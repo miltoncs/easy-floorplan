@@ -32,7 +32,7 @@ describe('validateRoomWalls', () => {
     })
   })
 
-  it('rejects a self-intersecting room outline', () => {
+  it('allows a self-intersecting room outline', () => {
     const room = createRoom({
       anchor: { x: 0, y: 0 },
       startHeading: 0,
@@ -44,13 +44,10 @@ describe('validateRoomWalls', () => {
       ],
     })
 
-    const result = validateRoomWalls(room)
-
-    expect(result.valid).toBe(false)
-    if (!result.valid) {
-      expect(result.error).toBe('Walls cannot intersect.')
-      expect(result.segmentIds).toEqual(['seg-b', 'seg-d'])
-    }
+    expect(validateRoomWalls(room)).toEqual({
+      valid: true,
+      error: null,
+    })
   })
 
   it('allows collinear overlapping walls', () => {

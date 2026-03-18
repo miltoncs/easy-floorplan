@@ -46,7 +46,7 @@ describe('blueprint camera framing', () => {
 })
 
 describe('getRoomSuggestions', () => {
-  it('skips inferred closures that would intersect an existing wall', () => {
+  it('keeps inferred closures even when they intersect an existing wall', () => {
     const room = createRoom({
       anchor: { x: 0, y: 0 },
       startHeading: 0,
@@ -63,7 +63,12 @@ describe('getRoomSuggestions', () => {
       rooms: [room],
     })
 
-    expect(getRoomSuggestions(room, floor)).toEqual([])
+    expect(getRoomSuggestions(room, floor)).toContainEqual(
+      expect.objectContaining({
+        kind: 'closure',
+        title: 'Close the room with one final wall',
+      }),
+    )
   })
 
   it('keeps offering valid inferred closures', () => {

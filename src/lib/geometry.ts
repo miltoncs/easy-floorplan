@@ -333,50 +333,7 @@ export function getRoomCorners(room: Room, options?: { includeExits?: boolean })
 }
 
 export function validateRoomWalls(room: Room): RoomWallValidation {
-  const geometry = roomToGeometry(room)
-  const segments = geometry.segments
-  const chainIndexBySegmentId = new Map<string, { chainIndex: number; segmentIndex: number; chainLength: number; closed: boolean }>()
-
-  geometry.chains.forEach((chain, chainIndex) => {
-    chain.segments.forEach((segment, segmentIndex) => {
-      chainIndexBySegmentId.set(segment.id, {
-        chainIndex,
-        segmentIndex,
-        chainLength: chain.segments.length,
-        closed: chain.closed,
-      })
-    })
-  })
-
-  for (let leftIndex = 0; leftIndex < segments.length; leftIndex += 1) {
-    for (let rightIndex = leftIndex + 1; rightIndex < segments.length; rightIndex += 1) {
-      const left = segments[leftIndex]
-      const right = segments[rightIndex]
-      const leftMeta = chainIndexBySegmentId.get(left.id)
-      const rightMeta = chainIndexBySegmentId.get(right.id)
-      const allowSharedEndpoint =
-        Boolean(leftMeta) &&
-        Boolean(rightMeta) &&
-        leftMeta!.chainIndex === rightMeta!.chainIndex &&
-        (
-          rightMeta!.segmentIndex === leftMeta!.segmentIndex + 1 ||
-          (leftMeta!.segmentIndex === 0 &&
-            rightMeta!.segmentIndex === leftMeta!.chainLength - 1 &&
-            leftMeta!.closed)
-        )
-
-      if (segmentsConflict(left, right, {
-        allowSharedEndpoint,
-      })) {
-        return {
-          valid: false,
-          error: 'Walls cannot intersect.',
-          segmentIds: [left.id, right.id],
-        }
-      }
-    }
-  }
-
+  void room
   return {
     valid: true,
     error: null,
@@ -636,41 +593,6 @@ export function emptyBounds(): Bounds {
   }
 }
 
-function segmentsConflict(
-  left: Pick<SegmentGeometry, 'start' | 'end'>,
-  right: Pick<SegmentGeometry, 'start' | 'end'>,
-  options: {
-    allowSharedEndpoint: boolean
-  },
-) {
-  const sharedEndpoint =
-    findSharedEndpoint(left.start, right.start) ??
-    findSharedEndpoint(left.start, right.end) ??
-    findSharedEndpoint(left.end, right.start) ??
-    findSharedEndpoint(left.end, right.end)
-
-  if (segmentsCollinear(left.start, left.end, right.start, right.end)) {
-    return Boolean(sharedEndpoint) && !options.allowSharedEndpoint
-  }
-
-  if (hasProperIntersection(left.start, left.end, right.start, right.end)) {
-    return true
-  }
-
-  const endpointTouches = [
-    pointOnSegment(left.start, right.start, right.end),
-    pointOnSegment(left.end, right.start, right.end),
-    pointOnSegment(right.start, left.start, left.end),
-    pointOnSegment(right.end, left.start, left.end),
-  ]
-
-  if (!endpointTouches.some(Boolean)) {
-    return false
-  }
-
-  return !sharedEndpoint || !options.allowSharedEndpoint
-}
-
 function roomsShareConnectedWalls(
   leftSegments: Array<Pick<SegmentGeometry, 'start' | 'end'>>,
   rightSegments: Array<Pick<SegmentGeometry, 'start' | 'end'>>,
@@ -704,32 +626,6 @@ function hasProperIntersection(a: Point, b: Point, c: Point, d: Point) {
 
   return o1 * o2 < -INTERSECTION_EPSILON && o3 * o4 < -INTERSECTION_EPSILON
 }
-
-function segmentsCollinear(a: Point, b: Point, c: Point, d: Point) {
-  return (
-    Math.abs(orientation(a, b, c)) <= INTERSECTION_EPSILON &&
-    Math.abs(orientation(a, b, d)) <= INTERSECTION_EPSILON
-  )
-}
-
-function findSharedEndpoint(left: Point, right: Point) {
-  return pointsEqual(left, right) ? left : null
-}
-
-function pointsEqual(left: Point, right: Point) {
-  return pointDistance(left, right) <= CLOSE_EPSILON * 0.02
-}
-
-function pointOnSegment(point: Point, start: Point, end: Point) {
-  return (
-    Math.abs(orientation(start, end, point)) <= INTERSECTION_EPSILON &&
-    point.x >= Math.min(start.x, end.x) - INTERSECTION_EPSILON &&
-    point.x <= Math.max(start.x, end.x) + INTERSECTION_EPSILON &&
-    point.y >= Math.min(start.y, end.y) - INTERSECTION_EPSILON &&
-    point.y <= Math.max(start.y, end.y) + INTERSECTION_EPSILON
-  )
-}
-
 function pointToSegmentDistance(point: Point, start: Point, end: Point) {
   const deltaX = end.x - start.x
   const deltaY = end.y - start.y
@@ -752,7 +648,6 @@ function pointToSegmentDistance(point: Point, start: Point, end: Point) {
 function orientation(a: Point, b: Point, c: Point) {
   return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
 }
-
 function getFurnitureCornerSnapCandidate(room: Room, furniture: Furniture, snapStrength: number) {
   const threshold = Math.max(snapStrength, 0)
 
