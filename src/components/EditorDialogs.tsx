@@ -42,6 +42,15 @@ export function EditorDialogs() {
   }
 
   if (dialog.kind === 'wall') {
+    const floor =
+      dialog.ids.structureId &&
+      dialog.ids.floorId
+        ? findFloorById(
+            draft,
+            dialog.ids.structureId,
+            dialog.ids.floorId,
+          )
+        : null
     const wall =
       dialog.ids.structureId &&
       dialog.ids.floorId &&
@@ -69,6 +78,11 @@ export function EditorDialogs() {
         <WallDialogBody
           key={`${dialog.ids.roomId}-${dialog.ids.segmentId}`}
           initialValue={wall}
+          initialRoomId={dialog.ids.roomId ?? null}
+          roomOptions={floor?.rooms.map((room) => ({
+            id: room.id,
+            name: room.name,
+          })) ?? []}
           onCancel={actions.closeDialog}
           onSubmit={(values) => actions.updateWall(dialog.ids, values)}
         />
@@ -162,8 +176,10 @@ export function EditorDialogs() {
             length: 10,
             notes: '',
           }}
+          initialRoomId={null}
+          roomOptions={[]}
           onCancel={actions.closeDialog}
-          onSubmit={(values) => actions.addWallFromAnchor(dialog.anchor, { ...values, turn: dialog.turn })}
+          onSubmit={({ label, length, notes }) => actions.addWallFromAnchor(dialog.anchor, { label, length, notes, turn: dialog.turn })}
         />
       </DialogFrame>
     )
@@ -403,6 +419,8 @@ function RenameDialogBody({
 
 function WallDialogBody({
   initialValue,
+  initialRoomId,
+  roomOptions,
   onCancel,
   onSubmit,
 }: {
@@ -411,11 +429,17 @@ function WallDialogBody({
     length: number
     notes: string
   }
+  initialRoomId: string | null
+  roomOptions: Array<{
+    id: string
+    name: string
+  }>
   onCancel: () => void
   onSubmit: (values: {
     label: string
     length: number
     notes: string
+    roomId: string | null
   }) => {
     valid: boolean
     error: string | null
@@ -424,6 +448,7 @@ function WallDialogBody({
   const [label, setLabel] = useState(initialValue.label)
   const [length, setLength] = useState(String(initialValue.length))
   const [notes, setNotes] = useState(initialValue.notes)
+  const [roomId, setRoomId] = useState(initialRoomId)
   const [error, setError] = useState<string | null>(null)
   const lengthInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -448,6 +473,7 @@ function WallDialogBody({
           label,
           length: parsedLength,
           notes,
+          roomId,
         })
 
         if (!result.valid) {
@@ -468,6 +494,25 @@ function WallDialogBody({
         />
       </label>
       <div className="field-grid compact">
+        {roomOptions.length > 0 ? (
+          <label>
+            <span>Room</span>
+            <select
+              className="text-input"
+              value={roomId ?? ''}
+              onChange={(event) => {
+                setRoomId(event.target.value || null)
+                setError(null)
+              }}
+            >
+              {roomOptions.map((room) => (
+                <option key={room.id} value={room.id}>
+                  {room.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         <label>
           <span>Length (ft)</span>
           <input

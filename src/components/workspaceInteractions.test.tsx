@@ -2164,6 +2164,120 @@ describe('workspace interactions', () => {
     })
   })
 
+  it('reassigns a wall from the edit wall dialog room dropdown', async () => {
+    const user = userEvent.setup()
+    const draft = createSeedState()
+    const floor = draft.structures[0].floors[0]
+    const livingRoom = floor.rooms[0]
+    const hall = floor.rooms[1]
+    const wall = livingRoom.segments[0]
+
+    renderEditor({ draft })
+
+    fireEvent.click(screen.getByTestId(`wall-hit-${wall.id}`))
+    expect(screen.getByRole('dialog')).toHaveTextContent('Edit wall')
+
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Room' }), hall.id)
+    expect(screen.getByRole('combobox', { name: 'Room' })).toHaveValue(hall.id)
+    const dialogLength = screen.getByRole('textbox', { name: 'Length (ft)' })
+    await user.clear(dialogLength)
+    await user.type(dialogLength, '17')
+    await user.click(screen.getByRole('button', { name: 'Save wall' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+
+    await waitFor(() => {
+      const savedFloor = readSavedDraft().structures[0].floors[0]
+      const updatedWall = savedFloor.rooms[1].segments.find((segment: { id: string }) => segment.id === wall.id)
+
+      expect(savedFloor.rooms[0].segments.some((segment: { id: string }) => segment.id === wall.id)).toBe(false)
+      expect(updatedWall).toEqual(
+        expect.objectContaining({
+          id: wall.id,
+          length: 17,
+        }),
+      )
+    })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('moves connected rooms together when their walls connect across room boundaries', async () => {
+    const draft = createSeedState()
+    const sourceRoom = createRoom({
+      id: 'room-source-connected',
+      name: 'Source room',
+      anchor: { x: 0, y: 0 },
+      startHeading: 0,
+      segments: [
+        createSegment({ id: 'source-top', label: 'Source top', length: 10, turn: -90 }),
+        createSegment({ id: 'shared-wall', label: 'Shared wall', length: 8, turn: -90 }),
+        createSegment({ id: 'source-bottom', label: 'Source bottom', length: 10, turn: -90 }),
+        createSegment({ id: 'source-left', label: 'Source left', length: 8, turn: -90 }),
+      ],
+      furniture: [],
+    })
+    const destinationRoom = createRoom({
+      id: 'room-destination-connected',
+      name: 'Destination room',
+      anchor: { x: 10, y: 0 },
+      startHeading: 0,
+      segments: [
+        createSegment({ id: 'destination-top', label: 'Destination top', length: 6, turn: -90 }),
+        createSegment({ id: 'destination-right', label: 'Destination right', length: 8, turn: -90 }),
+        createSegment({ id: 'destination-bottom', label: 'Destination bottom', length: 6, turn: -90 }),
+        createSegment({ id: 'destination-shared', label: 'Destination shared', length: 8, turn: -90 }),
+      ],
+      furniture: [],
+    })
+
+    draft.structures[0].floors[0].rooms = [sourceRoom, destinationRoom]
+    draft.selectedRoomId = sourceRoom.id
+
+    renderEditor({ draft })
+
+    const svg = screen.getByLabelText('Interactive floorplan canvas')
+    mockCanvasRect(svg)
+
+    fireEvent.pointerDown(screen.getByTestId(`room-label-${sourceRoom.id}`), {
+      button: 0,
+      pointerId: 62,
+      clientX: 160,
+      clientY: 140,
+    })
+    fireEvent.pointerMove(window, {
+      pointerId: 62,
+      clientX: 214,
+      clientY: 172,
+    })
+
+    await waitFor(() => {
+      expect(getGroupTranslate(`room-layer-${sourceRoom.id}`).x).toBeGreaterThan(0)
+      expect(getGroupTranslate(`room-layer-${destinationRoom.id}`).x).toBeGreaterThan(0)
+    })
+
+    fireEvent.pointerUp(window, {
+      pointerId: 62,
+      clientX: 214,
+      clientY: 172,
+    })
+
+    await waitFor(() => {
+      const savedFloor = readSavedDraft().structures[0].floors[0]
+      const savedSourceRoom = savedFloor.rooms.find((room: { id: string }) => room.id === sourceRoom.id)
+      const savedDestinationRoom = savedFloor.rooms.find((room: { id: string }) => room.id === destinationRoom.id)
+
+      expect(savedSourceRoom?.anchor.x).not.toBe(sourceRoom.anchor.x)
+      expect(savedDestinationRoom?.anchor.x).not.toBe(destinationRoom.anchor.x)
+      expect((savedSourceRoom?.anchor.x ?? 0) - sourceRoom.anchor.x).toBeCloseTo(
+        (savedDestinationRoom?.anchor.x ?? 0) - destinationRoom.anchor.x,
+        4,
+      )
+      expect((savedSourceRoom?.anchor.y ?? 0) - sourceRoom.anchor.y).toBeCloseTo(
+        (savedDestinationRoom?.anchor.y ?? 0) - destinationRoom.anchor.y,
+        4,
+      )
+    })
+  })
+
   it('assigns all selected walls and furniture to a room from the context menu', async () => {
     const user = userEvent.setup()
     const draft = createSeedState()

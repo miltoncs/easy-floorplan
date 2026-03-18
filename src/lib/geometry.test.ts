@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { createFurniture, createRoom, createSegment } from './blueprint'
+import { createFloor, createFurniture, createRoom, createSegment } from './blueprint'
 import {
   deleteRoomSegmentPreservingGeometry,
+  getConnectedRoomIds,
   getCornerAngleBetweenWalls,
   getRoomCorners,
   getTurnFromCornerAngle,
@@ -67,6 +68,60 @@ describe('validateRoomWalls', () => {
       valid: true,
       error: null,
     })
+  })
+
+  it('finds connected rooms without merging nearby rooms across a gap', () => {
+    const roomA = createRoom({
+      id: 'room-a',
+      anchor: { x: 0, y: 0 },
+      startHeading: 0,
+      segments: [
+        createSegment({ id: 'a-top', label: 'A top', length: 10, turn: -90 }),
+        createSegment({ id: 'a-shared', label: 'A shared', length: 8, turn: -90 }),
+        createSegment({ id: 'a-bottom', label: 'A bottom', length: 10, turn: -90 }),
+        createSegment({ id: 'a-left', label: 'A left', length: 8, turn: -90 }),
+      ],
+    })
+    const roomB = createRoom({
+      id: 'room-b',
+      anchor: { x: 10, y: 0 },
+      startHeading: 0,
+      segments: [
+        createSegment({ id: 'b-top', label: 'B top', length: 6, turn: -90 }),
+        createSegment({ id: 'b-right', label: 'B right', length: 8, turn: -90 }),
+        createSegment({ id: 'b-bottom', label: 'B bottom', length: 6, turn: -90 }),
+        createSegment({ id: 'b-shared', label: 'B shared', length: 8, turn: -90 }),
+      ],
+    })
+    const roomC = createRoom({
+      id: 'room-c',
+      anchor: { x: 16, y: 0 },
+      startHeading: 0,
+      segments: [
+        createSegment({ id: 'c-top', label: 'C top', length: 4, turn: -90 }),
+        createSegment({ id: 'c-right', label: 'C right', length: 8, turn: -90 }),
+        createSegment({ id: 'c-bottom', label: 'C bottom', length: 4, turn: -90 }),
+        createSegment({ id: 'c-shared', label: 'C shared', length: 8, turn: -90 }),
+      ],
+    })
+    const roomGap = createRoom({
+      id: 'room-gap',
+      anchor: { x: 20.46, y: 0 },
+      startHeading: 90,
+      segments: [
+        createSegment({ id: 'gap-left', label: 'Gap left', length: 8, turn: -90 }),
+        createSegment({ id: 'gap-top', label: 'Gap top', length: 4, turn: -90 }),
+        createSegment({ id: 'gap-right', label: 'Gap right', length: 8, turn: -90 }),
+        createSegment({ id: 'gap-bottom', label: 'Gap bottom', length: 4, turn: -90 }),
+      ],
+    })
+    const floor = createFloor({
+      rooms: [roomA, roomB, roomC, roomGap],
+    })
+
+    expect(getConnectedRoomIds(floor, roomA.id).sort()).toEqual([roomA.id, roomB.id, roomC.id].sort())
+    expect(getConnectedRoomIds(floor, roomB.id).sort()).toEqual([roomA.id, roomB.id, roomC.id].sort())
+    expect(getConnectedRoomIds(floor, roomGap.id)).toEqual([roomGap.id])
   })
 
   it('converts between turn deltas and angles between walls', () => {

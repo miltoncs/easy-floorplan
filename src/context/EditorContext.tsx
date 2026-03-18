@@ -50,6 +50,7 @@ import {
   createEmptyBounds,
   deleteRoomSegmentPreservingGeometry,
   mergeBounds,
+  getConnectedRoomIds,
   normalizeAngle,
   rotatePoint,
   rotateRoom as applyRoomRotation,
@@ -611,7 +612,12 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
     return validation
   }
 
-  const updateWall = (ids: EntityIds, values: Pick<Room['segments'][number], 'label' | 'length' | 'notes'>) => {
+  const updateWall = (
+    ids: EntityIds,
+    values: Pick<Room['segments'][number], 'label' | 'length' | 'notes'> & {
+      roomId?: string | null
+    },
+  ) => {
     if (!ids.structureId || !ids.floorId || !ids.roomId || !ids.segmentId) {
       return {
         valid: false,
@@ -621,34 +627,143 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
 
     const { structureId, floorId, roomId, segmentId } = ids
 
-    const validation = validateProspectiveRoom(state.draft, structureId, floorId, roomId, (room) => {
-      const segment = room.segments.find((item) => item.id === segmentId)
-      if (!segment) {
-        return false
+    const nextRoomId = values.roomId ?? roomId
+
+    if (nextRoomId === roomId) {
+      const validation = validateProspectiveRoom(state.draft, structureId, floorId, roomId, (room) => {
+        const segment = room.segments.find((item) => item.id === segmentId)
+        if (!segment) {
+          return false
+        }
+
+        segment.label = values.label
+        segment.length = values.length
+        segment.notes = values.notes
+        return true
+      })
+
+      if (!validation.valid) {
+        return validation
       }
 
-      segment.label = values.label
-      segment.length = values.length
-      segment.notes = values.notes
-      return true
-    })
+      mutateDraft((draft) => {
+        const segment = findSegmentById(draft, structureId, floorId, roomId, segmentId)
+        if (segment) {
+          segment.label = values.label
+          segment.length = values.length
+          segment.notes = values.notes
+        }
+      }, {
+        status: 'Wall measurements updated.',
+      })
 
+      dispatch({ type: 'closeDialog' })
+      return validation
+    }
+
+    const destinationRoom = findRoomById(state.draft, structureId, floorId, nextRoomId)
+    const wallPlacement = getWallPlacementForTarget(
+      state.draft,
+      { kind: 'wall', structureId, floorId, roomId, segmentId },
+      values,
+    )
+    if (!destinationRoom || !wallPlacement) {
+      return {
+        valid: false,
+        error: 'Wall could not be reassigned.',
+      }
+    }
+
+    const previewDraft = structuredClone(state.draft)
+    const previewFloor = findFloorById(previewDraft, structureId, floorId)
+    const previewSourceRoom = findRoomById(previewDraft, structureId, floorId, roomId)
+    const previewDestinationRoom = findRoomById(previewDraft, structureId, floorId, nextRoomId)
+
+    if (!previewFloor || !previewSourceRoom || !previewDestinationRoom) {
+      return {
+        valid: false,
+        error: 'Room could not be found.',
+      }
+    }
+
+    const previewDeletionResult = deleteRoomSegmentPreservingGeometry(previewSourceRoom, segmentId)
+    if (!previewDeletionResult.deleted) {
+      return {
+        valid: false,
+        error: 'Wall could not be reassigned.',
+      }
+    }
+
+    appendWallToRoom(previewDestinationRoom, wallPlacement.segment, wallPlacement.placement)
+    const deletedRoomIdSet = new Set<string>()
+
+    if (previewSourceRoom.segments.length === 0 && previewSourceRoom.furniture.length === 0) {
+      deletedRoomIdSet.add(roomId)
+      previewFloor.rooms = previewFloor.rooms.filter((room) => room.id !== roomId)
+    }
+
+    const validation = validateRoomWalls(previewDestinationRoom)
     if (!validation.valid) {
       return validation
     }
 
-    mutateDraft((draft) => {
-      const segment = findSegmentById(draft, structureId, floorId, roomId, segmentId)
-      if (segment) {
-        segment.label = values.label
-        segment.length = values.length
-        segment.notes = values.notes
-      }
-    }, {
-      status: 'Wall measurements updated.',
+    const nextFocusedTarget: CanvasTarget = {
+      kind: 'wall',
+      structureId,
+      floorId,
+      roomId: nextRoomId,
+      segmentId,
+    }
+    const remappedSelectionTargets = state.ui.selectionTargets
+      .map((selectionTarget) =>
+        isWallTarget(selectionTarget, { structureId, floorId, roomId, segmentId })
+          ? nextFocusedTarget
+          : selectionTarget,
+      )
+      .filter((selectionTarget) => !targetReferencesDeletedRoom(selectionTarget, deletedRoomIdSet))
+    const nextSelectionTargets = remappedSelectionTargets.some((selectionTarget) =>
+      isWallTarget(selectionTarget, { structureId, floorId, roomId: nextRoomId, segmentId }),
+    )
+      ? remappedSelectionTargets
+      : [nextFocusedTarget]
+
+    startTransition(() => {
+      dispatch({
+        type: 'mutateDraft',
+        recipe: (draft) => {
+          const editableFloor = findFloorById(draft, structureId, floorId)
+          const editableSourceRoom = findRoomById(draft, structureId, floorId, roomId)
+          const editableDestinationRoom = findRoomById(draft, structureId, floorId, nextRoomId)
+
+          if (!editableFloor || !editableSourceRoom || !editableDestinationRoom) {
+            return
+          }
+
+          const deletionResult = deleteRoomSegmentPreservingGeometry(editableSourceRoom, segmentId)
+          if (!deletionResult.deleted) {
+            return
+          }
+
+          appendWallToRoom(editableDestinationRoom, wallPlacement.segment, wallPlacement.placement)
+
+          if (deletedRoomIdSet.size > 0) {
+            editableFloor.rooms = editableFloor.rooms.filter((room) => !deletedRoomIdSet.has(room.id))
+          }
+
+          selectTargetInDraft(draft, nextFocusedTarget)
+        },
+        options: {
+          status: `Wall updated and assigned to ${destinationRoom.name}.`,
+        },
+      })
+      dispatch({
+        type: 'setSelectionTargets',
+        targets: nextSelectionTargets.length > 0 ? nextSelectionTargets : [nextFocusedTarget],
+      })
+      dispatch({ type: 'setFocusedTarget', target: nextFocusedTarget })
+      dispatch({ type: 'closeDialog' })
     })
 
-    dispatch({ type: 'closeDialog' })
     return validation
   }
 
@@ -765,24 +880,38 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
   }
 
   const moveRoom = (structureId: string, floorId: string, roomId: string, delta: { x: number; y: number }) => {
+    const floor = findFloorById(state.draft, structureId, floorId)
+    const connectedRoomIds = floor ? getConnectedRoomIds(floor, roomId) : []
+    const roomIdSet = new Set(connectedRoomIds.length > 0 ? connectedRoomIds : [roomId])
+
     mutateDraft((draft) => {
-      const room = findRoomById(draft, structureId, floorId, roomId)
-      if (!room) {
+      const editableFloor = findFloorById(draft, structureId, floorId)
+      if (!editableFloor) {
         return
       }
 
-      room.anchor.x += delta.x
-      room.anchor.y += delta.y
-      room.segments.forEach((segment) => {
-        if (!segment.startPoint) {
+      editableFloor.rooms.forEach((room) => {
+        if (!roomIdSet.has(room.id)) {
           return
         }
 
-        segment.startPoint.x += delta.x
-        segment.startPoint.y += delta.y
+        room.anchor.x += delta.x
+        room.anchor.y += delta.y
+        room.segments.forEach((segment) => {
+          if (!segment.startPoint) {
+            return
+          }
+
+          segment.startPoint.x += delta.x
+          segment.startPoint.y += delta.y
+        })
+        room.furniture.forEach((item) => {
+          item.x += delta.x
+          item.y += delta.y
+        })
       })
     }, {
-      status: 'Room moved.',
+      status: roomIdSet.size > 1 ? `${roomIdSet.size} connected rooms moved.` : 'Room moved.',
     })
   }
 
@@ -906,6 +1035,42 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
     room.segments.push(nextSegment)
   }
 
+  const getWallPlacementForTarget = (
+    draft: DraftState,
+    target: Extract<AssignableCanvasTarget, { kind: 'wall' }>,
+    overrides?: Partial<Pick<Room['segments'][number], 'label' | 'length' | 'turn' | 'notes'>>,
+  ) => {
+    const sourceRoom = findRoomById(draft, target.structureId, target.floorId, target.roomId)
+    const sourceSegment = findSegmentById(
+      draft,
+      target.structureId,
+      target.floorId,
+      target.roomId,
+      target.segmentId,
+    )
+    const segmentGeometry = sourceRoom
+      ? roomToGeometry(sourceRoom).segments.find((segment) => segment.id === target.segmentId) ?? null
+      : null
+
+    if (!sourceSegment || !segmentGeometry) {
+      return null
+    }
+
+    return {
+      segment: createSegment({
+        id: sourceSegment.id,
+        label: overrides?.label ?? sourceSegment.label,
+        length: overrides?.length ?? sourceSegment.length,
+        turn: overrides?.turn ?? sourceSegment.turn,
+        notes: overrides?.notes ?? sourceSegment.notes,
+      }),
+      placement: {
+        start: { ...segmentGeometry.start },
+        heading: segmentGeometry.heading,
+      },
+    }
+  }
+
   const assignTargetsToRoom = (
     targets: AssignableCanvasTarget[],
     nextRoomId: string,
@@ -941,40 +1106,7 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
     const wallPlacements = new Map(
       targetsToMove
         .filter((target): target is Extract<AssignableCanvasTarget, { kind: 'wall' }> => target.kind === 'wall')
-        .map((target) => {
-          const sourceRoom = findRoomById(state.draft, target.structureId, target.floorId, target.roomId)
-          const sourceSegment = findSegmentById(
-            state.draft,
-            target.structureId,
-            target.floorId,
-            target.roomId,
-            target.segmentId,
-          )
-          const segmentGeometry = sourceRoom
-            ? roomToGeometry(sourceRoom).segments.find((segment) => segment.id === target.segmentId) ?? null
-            : null
-
-          if (!sourceSegment || !segmentGeometry) {
-            return [getAssignableTargetKey(target), null] as const
-          }
-
-          return [
-            getAssignableTargetKey(target),
-            {
-              segment: createSegment({
-                id: sourceSegment.id,
-                label: sourceSegment.label,
-                length: sourceSegment.length,
-                turn: sourceSegment.turn,
-                notes: sourceSegment.notes,
-              }),
-              placement: {
-                start: { ...segmentGeometry.start },
-                heading: segmentGeometry.heading,
-              },
-            },
-          ] as const
-        }),
+        .map((target) => [getAssignableTargetKey(target), getWallPlacementForTarget(state.draft, target)] as const),
     )
 
     if (
@@ -1945,6 +2077,23 @@ function validateWallRunPlacement(draft: DraftState, wallTargetsToRemove: WallTa
   }
 }
 
+function isWallTarget(
+  target: CanvasTarget,
+  ids: {
+    structureId: string
+    floorId: string
+    roomId: string
+    segmentId: string
+  },
+) {
+  return (
+    target.kind === 'wall' &&
+    target.structureId === ids.structureId &&
+    target.floorId === ids.floorId &&
+    target.roomId === ids.roomId &&
+    target.segmentId === ids.segmentId
+  )
+}
 function isEditableEventTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) {
     return false

@@ -13,6 +13,7 @@ import { useEditor } from '../context/EditorContext'
 import {
   DEFAULT_LABEL_FONT_SIZE,
   computeFloorBounds,
+  findFloorById,
   findFurnitureById,
   findRoomById,
   findSegmentById,
@@ -29,6 +30,7 @@ import {
   clamp,
   formatCornerAngleBadge,
   formatFeet,
+  getConnectedRoomIds,
   getCornerAngleBetweenWalls,
   getRoomCorners,
   getTurnFromCornerAngle,
@@ -315,6 +317,19 @@ export function FloorplanCanvas() {
   const showSimplifiedDragPreview = Boolean(
     dragState?.moved && (dragState.kind === 'room' || dragState.kind === 'wall'),
   )
+  const draggedRoomIdSet = useMemo(() => {
+    if (!dragState || (dragState.kind !== 'room' && dragState.kind !== 'wall')) {
+      return null
+    }
+
+    const draggedFloor = findFloorById(draft, dragState.structureId, dragState.floorId)
+    if (!draggedFloor) {
+      return new Set([dragState.roomId])
+    }
+
+    const connectedRoomIds = getConnectedRoomIds(draggedFloor, dragState.roomId)
+    return new Set(connectedRoomIds.length > 0 ? connectedRoomIds : [dragState.roomId])
+  }, [draft, dragState])
   const canvasAppearanceStyle = {
     '--canvas-wall-line-width': `${draft.wallStrokeWidthPx}px`,
     '--canvas-label-font-size': `${draft.labelFontSize}px`,
@@ -2659,7 +2674,7 @@ export function FloorplanCanvas() {
         roomId: room.id,
         segmentId,
       })
-    const roomDragDelta = getDraggedRoomDelta(dragState, activeStructure.id, floor.id, room.id)
+    const roomDragDelta = getDraggedRoomDelta(dragState, activeStructure.id, floor.id, room.id, draggedRoomIdSet)
     const roomTransform = roomDragDelta ? `translate(${roomDragDelta.x} ${-roomDragDelta.y})` : undefined
 
     const roomHandlers = {
@@ -2912,13 +2927,14 @@ function getDraggedRoomDelta(
   structureId: string,
   floorId: string,
   roomId: string,
+  draggedRoomIdSet: Set<string> | null,
 ): Point | null {
   if (
     !dragState ||
     (dragState.kind !== 'room' && dragState.kind !== 'wall') ||
     dragState.structureId !== structureId ||
     dragState.floorId !== floorId ||
-    dragState.roomId !== roomId
+    !draggedRoomIdSet?.has(roomId)
   ) {
     return null
   }

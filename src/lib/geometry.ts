@@ -1,7 +1,8 @@
-import type { Bounds, CornerGeometry, Furniture, Point, Room, RoomGeometry, RoomGeometryChain, SegmentGeometry } from '../types'
+import type { Bounds, CornerGeometry, Floor, Furniture, Point, Room, RoomGeometry, RoomGeometryChain, SegmentGeometry } from '../types'
 
 const CLOSE_EPSILON = 0.45
 const INTERSECTION_EPSILON = 1e-6
+const ROOM_CONNECTION_EPSILON = 0.02
 
 export type RoomWallValidation =
   | {
@@ -236,6 +237,73 @@ export function deleteRoomSegmentPreservingGeometry(room: Room, segmentId: strin
   return {
     deleted: true as const,
   }
+}
+
+export function getConnectedRoomIds(floor: Floor, roomId: string) {
+  const startRoom = floor.rooms.find((room) => room.id === roomId)
+
+  if (!startRoom) {
+    return []
+  }
+
+  if (floor.rooms.length <= 1) {
+    return [startRoom.id]
+  }
+
+  const geometryByRoomId = new Map(
+    floor.rooms.map((room) => [room.id, roomToGeometry(room)]),
+  )
+  const adjacencyByRoomId = new Map(
+    floor.rooms.map((room) => [room.id, new Set<string>()]),
+  )
+
+  for (let leftIndex = 0; leftIndex < floor.rooms.length; leftIndex += 1) {
+    const leftRoom = floor.rooms[leftIndex]
+    const leftGeometry = geometryByRoomId.get(leftRoom.id)
+
+    if (!leftGeometry || leftGeometry.segments.length === 0) {
+      continue
+    }
+
+    for (let rightIndex = leftIndex + 1; rightIndex < floor.rooms.length; rightIndex += 1) {
+      const rightRoom = floor.rooms[rightIndex]
+      const rightGeometry = geometryByRoomId.get(rightRoom.id)
+
+      if (!rightGeometry || rightGeometry.segments.length === 0) {
+        continue
+      }
+
+      if (!roomsShareConnectedWalls(leftGeometry.segments, rightGeometry.segments)) {
+        continue
+      }
+
+      adjacencyByRoomId.get(leftRoom.id)?.add(rightRoom.id)
+      adjacencyByRoomId.get(rightRoom.id)?.add(leftRoom.id)
+    }
+  }
+
+  const connectedRoomIds: string[] = []
+  const visitedRoomIds = new Set<string>()
+  const queue = [startRoom.id]
+
+  while (queue.length > 0) {
+    const nextRoomId = queue.shift()
+
+    if (!nextRoomId || visitedRoomIds.has(nextRoomId)) {
+      continue
+    }
+
+    visitedRoomIds.add(nextRoomId)
+    connectedRoomIds.push(nextRoomId)
+
+    adjacencyByRoomId.get(nextRoomId)?.forEach((adjacentRoomId) => {
+      if (!visitedRoomIds.has(adjacentRoomId)) {
+        queue.push(adjacentRoomId)
+      }
+    })
+  }
+
+  return connectedRoomIds
 }
 
 export function getRoomCorners(room: Room, options?: { includeExits?: boolean }): CornerGeometry[] {
@@ -603,6 +671,31 @@ function segmentsConflict(
   return !sharedEndpoint || !options.allowSharedEndpoint
 }
 
+function roomsShareConnectedWalls(
+  leftSegments: Array<Pick<SegmentGeometry, 'start' | 'end'>>,
+  rightSegments: Array<Pick<SegmentGeometry, 'start' | 'end'>>,
+) {
+  return leftSegments.some((leftSegment) =>
+    rightSegments.some((rightSegment) => segmentsTouch(leftSegment, rightSegment)),
+  )
+}
+
+function segmentsTouch(
+  left: Pick<SegmentGeometry, 'start' | 'end'>,
+  right: Pick<SegmentGeometry, 'start' | 'end'>,
+) {
+  if (hasProperIntersection(left.start, left.end, right.start, right.end)) {
+    return true
+  }
+
+  return (
+    pointToSegmentDistance(left.start, right.start, right.end) <= ROOM_CONNECTION_EPSILON ||
+    pointToSegmentDistance(left.end, right.start, right.end) <= ROOM_CONNECTION_EPSILON ||
+    pointToSegmentDistance(right.start, left.start, left.end) <= ROOM_CONNECTION_EPSILON ||
+    pointToSegmentDistance(right.end, left.start, left.end) <= ROOM_CONNECTION_EPSILON
+  )
+}
+
 function hasProperIntersection(a: Point, b: Point, c: Point, d: Point) {
   const o1 = orientation(a, b, c)
   const o2 = orientation(a, b, d)
@@ -635,6 +728,25 @@ function pointOnSegment(point: Point, start: Point, end: Point) {
     point.y >= Math.min(start.y, end.y) - INTERSECTION_EPSILON &&
     point.y <= Math.max(start.y, end.y) + INTERSECTION_EPSILON
   )
+}
+
+function pointToSegmentDistance(point: Point, start: Point, end: Point) {
+  const deltaX = end.x - start.x
+  const deltaY = end.y - start.y
+  const lengthSquared = deltaX ** 2 + deltaY ** 2
+
+  if (lengthSquared <= INTERSECTION_EPSILON) {
+    return pointDistance(point, start)
+  }
+
+  const projection = ((point.x - start.x) * deltaX + (point.y - start.y) * deltaY) / lengthSquared
+  const t = clamp(projection, 0, 1)
+  const closest = {
+    x: start.x + deltaX * t,
+    y: start.y + deltaY * t,
+  }
+
+  return pointDistance(point, closest)
 }
 
 function orientation(a: Point, b: Point, c: Point) {
