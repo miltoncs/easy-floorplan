@@ -39,12 +39,15 @@ import {
   findSegmentById,
   getRoomSuggestions,
   getViewBox,
+  makeId,
   saveDraftState,
   selectTargetInDraft,
 } from '../lib/blueprint'
 import { createInitialState, editorReducer, type MutateDraftOptions } from '../lib/editorState'
 import {
   addPolar,
+  angleDelta,
+  angleFromPoints,
   boundsCenter,
   clamp,
   createEmptyBounds,
@@ -52,6 +55,7 @@ import {
   mergeBounds,
   getConnectedRoomIds,
   normalizeAngle,
+  pointDistance,
   rotatePoint,
   rotateRoom as applyRoomRotation,
   roomToGeometry,
@@ -480,18 +484,20 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
         return false
       }
 
-      const nextStart = addPolar(anchor, segment.length, normalizeAngle(heading + 180))
+      const nextStart = segment.startPoint ? { ...segment.startPoint } : addPolar(anchor, segment.length, normalizeAngle(heading + 180))
+      const nextHeading = typeof segment.startHeading === 'number' ? segment.startHeading : heading
       if (segmentIndex === 0) {
         segment.startPoint = undefined
         segment.startHeading = undefined
       } else {
         segment.startPoint = { ...nextStart }
-        segment.startHeading = heading
+        segment.startHeading = nextHeading
       }
       room.segments.splice(segmentIndex, 0, segment)
 
       if (segmentIndex === 0) {
         room.anchor = nextStart
+        room.startHeading = nextHeading
       } else {
         targetSegment.startPoint = undefined
         targetSegment.startHeading = undefined
@@ -1006,6 +1012,151 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
     dispatch({ type: 'closeDialog' })
 
     return validation
+  }
+
+  const resolveAnchoredWallTrace = (room: Room, anchor: AnchoredWallDialogAnchor) => {
+    const geometry = roomToGeometry(room)
+    const targetSegment = geometry.segments.find((segment) => segment.id === anchor.segmentId)
+    const chain = geometry.chains.find((item) => item.segments.some((segment) => segment.id === anchor.segmentId))
+
+    if (!targetSegment || !chain) {
+      return null
+    }
+
+    return {
+      point: anchor.side === 'before' ? targetSegment.start : targetSegment.end,
+      heading: targetSegment.heading,
+      chainStartSegmentId: chain.segments[0]?.id ?? anchor.segmentId,
+      chainEndSegmentId: chain.segments[chain.segments.length - 1]?.id ?? anchor.segmentId,
+    }
+  }
+
+  const traceWallFromAnchor = (
+    anchor: AnchoredWallDialogAnchor,
+    endpoint: Point,
+    snappedAnchor?: AnchoredWallDialogAnchor | null,
+  ) => {
+    const { structureId, floorId, roomId, segmentId, side } = anchor
+    const room = findRoomById(state.draft, structureId, floorId, roomId)
+
+    if (!room) {
+      setStatus('Room could not be found.')
+      return
+    }
+
+    const sourceAnchor = resolveAnchoredWallTrace(room, anchor)
+    const resolvedSnapAnchor =
+      snappedAnchor &&
+      snappedAnchor.structureId === structureId &&
+      snappedAnchor.floorId === floorId &&
+      snappedAnchor.roomId === roomId
+        ? resolveAnchoredWallTrace(room, snappedAnchor)
+        : null
+    const effectiveEndpoint = resolvedSnapAnchor?.point ?? endpoint
+    const length = round(pointDistance(sourceAnchor?.point ?? endpoint, effectiveEndpoint), 4)
+
+    if (!sourceAnchor) {
+      setStatus('Wall could not be found.')
+      return
+    }
+
+    if (length <= 0.1) {
+      setStatus('Drag farther from the joint to trace a wall.')
+      return
+    }
+
+    const nextSegmentId = makeId('seg')
+    const nextTarget: CanvasTarget = {
+      kind: 'wall',
+      structureId,
+      floorId,
+      roomId,
+      segmentId: nextSegmentId,
+    }
+    const segmentTemplate = {
+      id: nextSegmentId,
+      label: `${room.name} wall ${room.segments.length + 1}`,
+      length,
+      notes: '',
+      turn: 90,
+    }
+
+    const applyTraceToRoom = (editableRoom: Room) => {
+      if (side === 'after') {
+        const nextHeading = angleFromPoints(sourceAnchor.point, effectiveEndpoint)
+        const targetSegment = editableRoom.segments.find((item) => item.id === segmentId)
+        if (!targetSegment) {
+          return false
+        }
+
+        targetSegment.turn = round(angleDelta(sourceAnchor.heading, nextHeading), 1)
+
+        const closingTurn =
+          resolvedSnapAnchor && snappedAnchor?.side === 'before' && snappedAnchor.segmentId === sourceAnchor.chainStartSegmentId
+            ? round(angleDelta(nextHeading, resolvedSnapAnchor.heading), 1)
+            : 90
+
+        return insertWallAtAnchor(
+          editableRoom,
+          segmentId,
+          side,
+          createSegment({
+            ...segmentTemplate,
+            turn: closingTurn,
+          }),
+        )
+      }
+
+      const nextHeading = angleFromPoints(effectiveEndpoint, sourceAnchor.point)
+      const closingTargetSegment =
+        resolvedSnapAnchor && snappedAnchor?.side === 'after' && snappedAnchor.segmentId === sourceAnchor.chainEndSegmentId
+          ? editableRoom.segments.find((item) => item.id === snappedAnchor.segmentId)
+          : null
+
+      if (resolvedSnapAnchor && snappedAnchor?.side === 'after' && snappedAnchor.segmentId === sourceAnchor.chainEndSegmentId) {
+        if (!closingTargetSegment) {
+          return false
+        }
+
+        closingTargetSegment.turn = round(angleDelta(resolvedSnapAnchor.heading, nextHeading), 1)
+      }
+
+      return insertWallAtAnchor(
+        editableRoom,
+        segmentId,
+        side,
+        createSegment({
+          ...segmentTemplate,
+          startPoint: { ...effectiveEndpoint },
+          startHeading: nextHeading,
+          turn: round(angleDelta(nextHeading, sourceAnchor.heading), 1),
+        }),
+      )
+    }
+
+    const validation = validateProspectiveRoom(state.draft, structureId, floorId, roomId, applyTraceToRoom)
+
+    if (!validation.valid) {
+      setStatus(validation.error)
+      return
+    }
+
+    mutateDraft((draft) => {
+      const editableRoom = findRoomById(draft, structureId, floorId, roomId)
+      if (!editableRoom || !applyTraceToRoom(editableRoom)) {
+        return
+      }
+
+      draft.activeStructureId = structureId
+      draft.activeFloorId = floorId
+      draft.selectedRoomId = roomId
+      draft.selectedFurnitureId = null
+    }, {
+      status: resolvedSnapAnchor ? 'Wall traced and snapped to an open joint.' : 'Wall traced.',
+    })
+
+    dispatch({ type: 'setFocusedTarget', target: nextTarget })
+    dispatch({ type: 'setSelectionTargets', targets: [nextTarget] })
   }
 
   const appendWallToRoom = (
@@ -1665,6 +1816,7 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
     assignFurnitureToRoom,
     assignWallToRoom,
     addWallFromAnchor,
+    traceWallFromAnchor,
     openContextMenu: (menu: NonNullable<ContextMenuState>) => dispatch({ type: 'openContextMenu', menu }),
     closeContextMenu: () => dispatch({ type: 'closeContextMenu' }),
     startMeasurement: (point: Point) => dispatch({ type: 'startMeasurement', point }),

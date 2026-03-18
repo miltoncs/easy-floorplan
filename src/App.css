@@ -826,6 +826,24 @@
   stroke-width: calc(var(--canvas-wall-line-width) * 1.1);
 }
 
+.traced-wall-preview {
+  pointer-events: none;
+}
+
+.traced-wall-preview__line {
+  fill: none;
+  stroke: rgba(171, 91, 46, 0.96);
+  stroke-width: calc(var(--canvas-wall-line-width) * 1.15);
+  stroke-linecap: round;
+  stroke-dasharray: 0.3 0.2;
+}
+
+.traced-wall-preview__endpoint {
+  fill: rgba(171, 91, 46, 0.98);
+  stroke: rgba(255, 255, 255, 0.96);
+  stroke-width: 0.08;
+}
+
 .canvas-measurement {
   pointer-events: none;
 }

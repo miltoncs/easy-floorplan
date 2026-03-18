@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { createSeedState } from '../data/seed'
 import { MIN_WALL_STROKE_WIDTH_PX, createFloor, createFurniture, createRoom, createSegment, getRoomSuggestions } from '../lib/blueprint'
 import { MAX_CAMERA_ZOOM } from '../lib/camera'
-import { formatFeet } from '../lib/geometry'
+import { formatFeet, roomToGeometry } from '../lib/geometry'
 import { renderEditor } from '../test/renderEditor'
 
 describe('workspace interactions', () => {
@@ -294,6 +294,7 @@ describe('workspace interactions', () => {
 
     const svg = screen.getByLabelText('Interactive floorplan canvas')
     mockCanvasRect(svg)
+    fireEvent(window, new Event('resize'))
 
     const wheelEvent = new WheelEvent('wheel', {
       bubbles: true,
@@ -385,6 +386,113 @@ describe('workspace interactions', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Stacked$/ }))
     expect(screen.queryByTestId(`anchor-start-${room.segments[0].id}`)).not.toBeInTheDocument()
     expect(screen.queryByTestId(`anchor-${openEndWall.id}`)).not.toBeInTheDocument()
+  })
+
+  it('traces a new wall from an open wall point while preserving click-to-create', async () => {
+    const draft = createSeedState()
+    const room = createRoom({
+      name: 'Closet',
+      anchor: { x: 0, y: 0 },
+      startHeading: 0,
+      segments: [createSegment({ id: 'solo-wall', label: 'Solo wall', length: 8, turn: 90 })],
+      furniture: [],
+    })
+
+    draft.structures[0].floors[0].rooms = [room]
+    draft.selectedRoomId = room.id
+    draft.selectedFurnitureId = null
+
+    renderEditor({ draft })
+
+    const svg = screen.getByLabelText('Interactive floorplan canvas')
+    mockCanvasRect(svg)
+    fireEvent(window, new Event('resize'))
+
+    fireEvent.click(screen.getByTestId('anchor-solo-wall'))
+    expect(screen.getByRole('dialog')).toHaveTextContent('Edit corner angle')
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+
+    const start = getScreenPointForWorldPoint({ x: 8, y: 0 }, svg)
+    const end = getScreenPointForWorldPoint({ x: 14, y: 0 }, svg)
+
+    fireEvent.pointerDown(screen.getByTestId('anchor-solo-wall'), {
+      button: 0,
+      pointerId: 72,
+      clientX: start.x,
+      clientY: start.y,
+    })
+    fireEvent.pointerMove(window, {
+      pointerId: 72,
+      clientX: end.x,
+      clientY: end.y,
+    })
+    fireEvent.pointerUp(window, {
+      pointerId: 72,
+      clientX: end.x,
+      clientY: end.y,
+    })
+
+    await waitFor(() => expect(document.querySelectorAll('[data-testid^="wall-hit-"]')).toHaveLength(2))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    const savedRoom = readSavedDraft().structures[0].floors[0].rooms[0]
+    const savedGeometry = roomToGeometry(savedRoom)
+    expect(savedRoom.segments).toHaveLength(2)
+    expect(savedRoom.segments[0].turn).toBeCloseTo(0, 4)
+    expect(savedGeometry.endPoint.x).toBeCloseTo(14, 4)
+    expect(savedGeometry.endPoint.y).toBeCloseTo(0, 4)
+  })
+
+  it('snaps a traced wall endpoint to another open wall point', async () => {
+    const draft = createSeedState()
+    const room = createRoom({
+      id: 'snap-open-room',
+      name: 'Snap room',
+      anchor: { x: 0, y: 0 },
+      startHeading: 0,
+      segments: [
+        createSegment({ id: 'snap-a', label: 'Wall A', length: 10, turn: 90 }),
+        createSegment({ id: 'snap-b', label: 'Wall B', length: 8, turn: 90 }),
+      ],
+      furniture: [],
+    })
+
+    draft.structures[0].floors[0].rooms = [room]
+    draft.selectedRoomId = room.id
+    draft.selectedFurnitureId = null
+
+    renderEditor({ draft })
+
+    const svg = screen.getByLabelText('Interactive floorplan canvas')
+    mockCanvasRect(svg)
+
+    const anchorStart = getScreenPointForWorldPoint({ x: 0, y: 0 }, svg)
+    const nearEnd = getScreenPointForWorldPoint({ x: 10.35, y: 7.7 }, svg)
+
+    fireEvent.pointerDown(screen.getByTestId('anchor-start-snap-a'), {
+      button: 0,
+      pointerId: 73,
+      clientX: anchorStart.x,
+      clientY: anchorStart.y,
+    })
+    fireEvent.pointerMove(window, {
+      pointerId: 73,
+      clientX: nearEnd.x,
+      clientY: nearEnd.y,
+    })
+    fireEvent.pointerUp(window, {
+      pointerId: 73,
+      clientX: nearEnd.x,
+      clientY: nearEnd.y,
+    })
+
+    await waitFor(() => expect(document.querySelectorAll('[data-testid^="wall-hit-"]')).toHaveLength(3))
+
+    const savedRoom = readSavedDraft().structures[0].floors[0].rooms[0]
+    const savedGeometry = roomToGeometry(savedRoom)
+    expect(savedRoom.anchor.x).toBeCloseTo(10, 4)
+    expect(savedRoom.anchor.y).toBeCloseTo(8, 4)
+    expect(savedGeometry.closed).toBe(true)
   })
 
   it('keeps the current viewBox when walls are added or deleted', async () => {

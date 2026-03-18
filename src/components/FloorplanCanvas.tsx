@@ -36,11 +36,13 @@ import {
   getTurnFromCornerAngle,
   midpoint,
   normalizeAngle,
+  pointDistance,
   pointsToPath,
   roomToGeometry,
   snapFurnitureToRoom,
 } from '../lib/geometry'
 import type {
+  AnchoredWallDialogAnchor,
   Bounds,
   CanvasMeasurement,
   CanvasRoomVisibilityScope,
@@ -93,6 +95,18 @@ type DragState =
       startY: number
       currentX: number
       currentY: number
+      moved: boolean
+    }
+  | {
+      kind: 'anchored-wall'
+      pointerId: number
+      clientX: number
+      clientY: number
+      anchorKey: string
+      anchor: AnchoredWallDialogAnchor
+      startPoint: Point
+      currentPoint: Point
+      snappedAnchor: AnchoredWallDialogAnchor | null
       moved: boolean
     }
   | {
@@ -167,6 +181,13 @@ type RoomGeometryEntry = {
   floorId: string
   room: Room
   geometry: RoomGeometry
+}
+
+type OpenWallAnchor = {
+  key: string
+  testId: string
+  point: Point
+  anchor: AnchoredWallDialogAnchor
 }
 
 type AnnotationKind = 'floor' | 'room' | 'furniture' | 'wall'
@@ -260,6 +281,7 @@ const WALL_HIT_STROKE_WIDTH_MULTIPLIER = 4
 const CORNER_HIT_RADIUS_PX = 10
 const ANCHOR_ACTION_RADIUS_PX = 9
 const ANCHOR_ACTION_CROSS_HALF_PX = 4
+const OPEN_WALL_ANCHOR_SNAP_RADIUS_PX = 18
 const MIN_HOVER_HITBOX_SCALE = 0.5
 const MAX_HOVER_HITBOX_SCALE = 1.35
 const SUGGESTION_ACTION_WIDTH_PX = 58
@@ -288,6 +310,8 @@ export function FloorplanCanvas() {
   const suppressCanvasClickRef = useRef(false)
   const suppressTargetClickRef = useRef<CanvasTarget | null>(null)
   const suppressTargetClickTimerRef = useRef<number | null>(null)
+  const suppressAnchorClickRef = useRef<string | null>(null)
+  const suppressAnchorClickTimerRef = useRef<number | null>(null)
   const inlineRoomInputRef = useRef<HTMLInputElement | null>(null)
   const inlineWallInputRef = useRef<HTMLInputElement | null>(null)
   const inlineFurnitureInputRef = useRef<HTMLInputElement | null>(null)
@@ -381,6 +405,10 @@ export function FloorplanCanvas() {
   const canvasMetrics = getCanvasMetrics(viewBox, canvasSize)
   const hoverHitboxScale = getHoverHitboxScale(ui.camera.zoom)
   const anchorActionScale = getWorldDistanceFromPixels(canvasMetrics, 1)
+  const openWallAnchorSnapDistance = getWorldDistanceFromPixels(
+    canvasMetrics,
+    OPEN_WALL_ANCHOR_SNAP_RADIUS_PX * hoverHitboxScale,
+  )
   const wallHitStrokeWidthPx =
     Math.max(MIN_WALL_HIT_STROKE_WIDTH_PX, draft.wallStrokeWidthPx * WALL_HIT_STROKE_WIDTH_MULTIPLIER) *
     hoverHitboxScale
@@ -522,6 +550,62 @@ export function FloorplanCanvas() {
         canvasMetrics,
         viewRotationQuarterTurns,
       })
+  const openWallAnchors = useMemo<OpenWallAnchor[]>(() => {
+    if (
+      showSimplifiedDragPreview ||
+      draft.editorMode !== 'rooms' ||
+      !selectedRoom ||
+      !selectedRoomGeometry ||
+      !activeStructure ||
+      !activeFloor
+    ) {
+      return []
+    }
+
+    return selectedRoomGeometry.chains.flatMap((chain) => {
+      if (chain.closed || chain.segments.length === 0) {
+        return []
+      }
+
+      const firstSegment = chain.segments[0]
+      const lastSegment = chain.segments[chain.segments.length - 1]
+
+      return [
+        {
+          key: `${firstSegment.id}:before`,
+          testId: `anchor-start-${firstSegment.id}`,
+          point: firstSegment.start,
+          anchor: {
+            structureId: activeStructure.id,
+            floorId: activeFloor.id,
+            roomId: selectedRoom.id,
+            segmentId: firstSegment.id,
+            side: 'before',
+          },
+        },
+        {
+          key: `${lastSegment.id}:after`,
+          testId: `anchor-${lastSegment.id}`,
+          point: lastSegment.end,
+          anchor: {
+            structureId: activeStructure.id,
+            floorId: activeFloor.id,
+            roomId: selectedRoom.id,
+            segmentId: lastSegment.id,
+            side: 'after',
+          },
+        },
+      ] satisfies OpenWallAnchor[]
+    })
+  }, [
+    activeFloor,
+    activeStructure,
+    draft.editorMode,
+    selectedRoom,
+    selectedRoomGeometry,
+    showSimplifiedDragPreview,
+  ])
+  const tracedWallDrag = dragState?.kind === 'anchored-wall' && dragState.moved ? dragState : null
   const selectableTargets = showSimplifiedDragPreview
     ? []
     : buildSelectableCanvasTargets({
@@ -785,6 +869,9 @@ export function FloorplanCanvas() {
       if (suppressTargetClickTimerRef.current !== null) {
         window.clearTimeout(suppressTargetClickTimerRef.current)
       }
+      if (suppressAnchorClickTimerRef.current !== null) {
+        window.clearTimeout(suppressAnchorClickTimerRef.current)
+      }
     }
   }, [])
 
@@ -842,6 +929,12 @@ export function FloorplanCanvas() {
       return
     }
 
+    if (activeDrag.kind === 'anchored-wall') {
+      suppressNextAnchorClick(activeDrag.anchorKey, { persistUntilConsumed: true })
+      endDrag()
+      return
+    }
+
     actions.mutateDraft((draftState) => {
       const item = findFurnitureById(
         draftState,
@@ -877,6 +970,29 @@ export function FloorplanCanvas() {
     }
 
     const rect = svgRef.current.getBoundingClientRect()
+    const moved = Math.abs(event.clientX - dragRef.current.clientX) > 4 || Math.abs(event.clientY - dragRef.current.clientY) > 4
+    const activeDrag = dragRef.current
+
+    if (activeDrag.kind === 'anchored-wall') {
+      const svgPoint = screenToBaseSvgPoint(event.clientX, event.clientY, rect, viewBox, viewRotationQuarterTurns)
+      const rawPoint = {
+        x: svgPoint.x,
+        y: -svgPoint.y,
+      }
+      const snappedAnchor = moved
+        ? getClosestOpenWallAnchor(rawPoint, openWallAnchors, activeDrag.anchorKey, openWallAnchorSnapDistance)
+        : null
+      const nextDrag = {
+        ...activeDrag,
+        moved,
+        currentPoint: snappedAnchor?.point ?? rawPoint,
+        snappedAnchor: snappedAnchor?.anchor ?? null,
+      }
+      dragRef.current = nextDrag
+      setDragState(nextDrag)
+      return
+    }
+
     const delta = screenDeltaToBaseSvgDelta(
       event.clientX - dragRef.current.clientX,
       event.clientY - dragRef.current.clientY,
@@ -886,8 +1002,6 @@ export function FloorplanCanvas() {
     )
     const deltaX = delta.x
     const deltaY = delta.y
-    const moved = Math.abs(event.clientX - dragRef.current.clientX) > 4 || Math.abs(event.clientY - dragRef.current.clientY) > 4
-    const activeDrag = dragRef.current
 
     if (activeDrag.kind === 'canvas') {
       const nextOffset = {
@@ -984,6 +1098,14 @@ export function FloorplanCanvas() {
 
     const completedDrag = dragRef.current
     endDrag()
+
+    if (completedDrag.kind === 'anchored-wall') {
+      if (completedDrag.moved) {
+        suppressNextAnchorClick(completedDrag.anchorKey)
+        actions.traceWallFromAnchor(completedDrag.anchor, completedDrag.currentPoint, completedDrag.snappedAnchor)
+      }
+      return
+    }
 
     if (completedDrag.kind === 'selection') {
       suppressCanvasClickRef.current = true
@@ -1300,6 +1422,27 @@ export function FloorplanCanvas() {
             <SuggestedPath dataTestId={`suggested-path-${preview.suggestion.id}`} points={preview.points} />
           </g>
         ))}
+        {tracedWallDrag ? (
+          <g className="traced-wall-preview" data-testid="traced-wall-preview">
+            <line
+              className="traced-wall-preview__line"
+              data-testid="traced-wall-preview-line"
+              vectorEffect="non-scaling-stroke"
+              x1={tracedWallDrag.startPoint.x}
+              x2={tracedWallDrag.currentPoint.x}
+              y1={-tracedWallDrag.startPoint.y}
+              y2={-tracedWallDrag.currentPoint.y}
+            />
+            <circle
+              className="traced-wall-preview__endpoint"
+              cx={tracedWallDrag.currentPoint.x}
+              cy={-tracedWallDrag.currentPoint.y}
+              data-testid="traced-wall-preview-endpoint"
+              r={0.16}
+              vectorEffect="non-scaling-stroke"
+            />
+          </g>
+        ) : null}
         {!showSimplifiedDragPreview && selectedRoom && selectedRoomGeometry && activeStructure && activeFloor
           ? getRoomCorners(selectedRoom).map((corner) => {
               const target: CanvasTarget = {
@@ -1328,90 +1471,54 @@ export function FloorplanCanvas() {
             })
           : null}
 
-        {!showSimplifiedDragPreview &&
-        draft.editorMode === 'rooms' &&
-        selectedRoom &&
-        selectedRoomGeometry &&
-        activeStructure &&
-        activeFloor &&
-        selectedRoomGeometry.chains.some((chain) => !chain.closed)
-          ? selectedRoomGeometry.chains
-              .flatMap((chain) => {
-                if (chain.closed || chain.segments.length === 0) {
-                  return []
-                }
+        {!showSimplifiedDragPreview && openWallAnchors.length > 0
+          ? openWallAnchors.map((anchor) => (
+              <g
+                key={anchor.key}
+                className="anchor-action"
+                data-testid={anchor.testId}
+                transform={`translate(${anchor.point.x} ${-anchor.point.y}) scale(${anchorActionScale})`}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  if (consumeSuppressedAnchorClick(anchor.key)) {
+                    return
+                  }
 
-                const firstSegment = chain.segments[0]
-                const lastSegment = chain.segments[chain.segments.length - 1]
-
-                return [
-                  {
-                    key: `${firstSegment.id}-anchor-start`,
-                    testId: `anchor-start-${firstSegment.id}`,
-                    point: firstSegment.start,
-                    onClick: (event: ReactMouseEvent<SVGGElement>) => {
-                      event.stopPropagation()
-                      actions.openAnchoredWallAngleDialog({
-                        structureId: activeStructure.id,
-                        floorId: activeFloor.id,
-                        roomId: selectedRoom.id,
-                        segmentId: firstSegment.id,
-                        side: 'before',
-                      })
-                    },
-                  },
-                  {
-                    key: `${lastSegment.id}-anchor-end`,
-                    testId: `anchor-${lastSegment.id}`,
-                    point: lastSegment.end,
-                    onClick: (event: ReactMouseEvent<SVGGElement>) => {
-                      event.stopPropagation()
-                      actions.openAnchoredWallAngleDialog({
-                        structureId: activeStructure.id,
-                        floorId: activeFloor.id,
-                        roomId: selectedRoom.id,
-                        segmentId: lastSegment.id,
-                        side: 'after',
-                      })
-                    },
-                  },
-                ]
-              })
-              .filter(
-                (
-                  anchor,
-                ): anchor is {
-                  key: string
-                  testId: string
-                  point: Point
-                  onClick: (event: ReactMouseEvent<SVGGElement>) => void
-                } => anchor !== null,
-              )
-              .map((anchor) => (
-                <g
-                  key={anchor.key}
-                  className="anchor-action"
-                  data-testid={anchor.testId}
-                  transform={`translate(${anchor.point.x} ${-anchor.point.y}) scale(${anchorActionScale})`}
-                  onClick={anchor.onClick}
-                >
-                  <circle r={ANCHOR_ACTION_RADIUS_PX} vectorEffect="non-scaling-stroke" />
-                  <line
-                    vectorEffect="non-scaling-stroke"
-                    x1={-ANCHOR_ACTION_CROSS_HALF_PX}
-                    x2={ANCHOR_ACTION_CROSS_HALF_PX}
-                    y1={0}
-                    y2={0}
-                  />
-                  <line
-                    vectorEffect="non-scaling-stroke"
-                    x1={0}
-                    x2={0}
-                    y1={-ANCHOR_ACTION_CROSS_HALF_PX}
-                    y2={ANCHOR_ACTION_CROSS_HALF_PX}
-                  />
-                </g>
-              ))
+                  actions.openAnchoredWallAngleDialog(anchor.anchor)
+                }}
+                onPointerDown={(event) => {
+                  event.stopPropagation()
+                  beginDrag(event, {
+                    kind: 'anchored-wall',
+                    pointerId: event.pointerId,
+                    clientX: event.clientX,
+                    clientY: event.clientY,
+                    anchorKey: anchor.key,
+                    anchor: anchor.anchor,
+                    startPoint: anchor.point,
+                    currentPoint: anchor.point,
+                    snappedAnchor: null,
+                    moved: false,
+                  })
+                }}
+              >
+                <circle r={ANCHOR_ACTION_RADIUS_PX} vectorEffect="non-scaling-stroke" />
+                <line
+                  vectorEffect="non-scaling-stroke"
+                  x1={-ANCHOR_ACTION_CROSS_HALF_PX}
+                  x2={ANCHOR_ACTION_CROSS_HALF_PX}
+                  y1={0}
+                  y2={0}
+                />
+                <line
+                  vectorEffect="non-scaling-stroke"
+                  x1={0}
+                  x2={0}
+                  y1={-ANCHOR_ACTION_CROSS_HALF_PX}
+                  y2={ANCHOR_ACTION_CROSS_HALF_PX}
+                />
+              </g>
+            ))
           : null}
         </g>
       </svg>
@@ -1995,6 +2102,40 @@ export function FloorplanCanvas() {
     return true
   }
 
+  function clearSuppressedAnchorClick() {
+    suppressAnchorClickRef.current = null
+    if (suppressAnchorClickTimerRef.current !== null) {
+      window.clearTimeout(suppressAnchorClickTimerRef.current)
+      suppressAnchorClickTimerRef.current = null
+    }
+  }
+
+  function suppressNextAnchorClick(anchorKey: string, options?: { persistUntilConsumed?: boolean }) {
+    suppressAnchorClickRef.current = anchorKey
+    if (suppressAnchorClickTimerRef.current !== null) {
+      window.clearTimeout(suppressAnchorClickTimerRef.current)
+      suppressAnchorClickTimerRef.current = null
+    }
+
+    if (options?.persistUntilConsumed) {
+      return
+    }
+
+    suppressAnchorClickTimerRef.current = window.setTimeout(() => {
+      suppressAnchorClickRef.current = null
+      suppressAnchorClickTimerRef.current = null
+    }, 0)
+  }
+
+  function consumeSuppressedAnchorClick(anchorKey: string) {
+    if (suppressAnchorClickRef.current !== anchorKey) {
+      return false
+    }
+
+    clearSuppressedAnchorClick()
+    return true
+  }
+
   function handleWallClick(target: CanvasTarget) {
     if (target.kind !== 'wall') {
       return
@@ -2507,6 +2648,7 @@ export function FloorplanCanvas() {
     }
 
     clearSuppressedTargetClick()
+    clearSuppressedAnchorClick()
 
     if (dragState.kind === 'room' || dragState.kind === 'furniture') {
       setDragViewBounds(ui.camera.frameBounds)
@@ -2943,6 +3085,32 @@ function getDraggedRoomDelta(
     x: dragState.currentX - dragState.startX,
     y: dragState.currentY - dragState.startY,
   }
+}
+
+function getClosestOpenWallAnchor(
+  point: Point,
+  anchors: OpenWallAnchor[],
+  excludedAnchorKey: string,
+  maxDistance: number,
+): OpenWallAnchor | null {
+  let bestAnchor: OpenWallAnchor | null = null
+  let bestDistance = maxDistance
+
+  anchors.forEach((anchor) => {
+    if (anchor.key === excludedAnchorKey) {
+      return
+    }
+
+    const distance = pointDistance(point, anchor.point)
+    if (distance > bestDistance) {
+      return
+    }
+
+    bestAnchor = anchor
+    bestDistance = distance
+  })
+
+  return bestAnchor
 }
 
 function matchesTarget(left: CanvasTarget | null, right: CanvasTarget | null) {
