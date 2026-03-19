@@ -216,6 +216,44 @@ export function CanvasContextMenu() {
       return
     }
 
+    if (actionId === 'preview-current-scope') {
+      actions.openIsometricPreview()
+      return
+    }
+
+    if (actionId === 'preview-house' && actionTarget.kind === 'structure') {
+      actions.selectStructure(actionTarget.structureId)
+      actions.setViewScope({
+        kind: 'house',
+        structureId: actionTarget.structureId,
+      })
+      actions.openIsometricPreview()
+      return
+    }
+
+    if (actionId === 'preview-floor' && actionTarget.kind === 'floor') {
+      actions.selectFloor(actionTarget.structureId, actionTarget.floorId)
+      actions.setViewScope({
+        kind: 'floor',
+        floorId: actionTarget.floorId,
+      })
+      actions.openIsometricPreview()
+      return
+    }
+
+    if (
+      actionId === 'preview-room' &&
+      (actionTarget.kind === 'room' ||
+        actionTarget.kind === 'wall' ||
+        actionTarget.kind === 'corner' ||
+        actionTarget.kind === 'furniture')
+    ) {
+      actions.selectTarget(actionTarget)
+      actions.setViewScope({ kind: 'room' })
+      actions.openIsometricPreview()
+      return
+    }
+
     if (actionId === 'open-detail') {
       navigate('/detail')
       return

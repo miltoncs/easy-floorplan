@@ -570,6 +570,126 @@
   overflow: hidden;
 }
 
+.isometric-preview {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 0.9rem;
+  padding: 1rem;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at top left, rgba(255, 251, 242, 0.92), rgba(255, 255, 255, 0) 44%),
+    linear-gradient(180deg, rgba(246, 243, 236, 0.96), rgba(237, 232, 221, 0.98));
+}
+
+.isometric-preview__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.isometric-preview__title,
+.isometric-preview__actions,
+.isometric-preview__scope {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.isometric-preview__title h2 {
+  margin: 0;
+  font-family: 'Public Sans', sans-serif;
+  letter-spacing: -0.04em;
+}
+
+.isometric-preview__summary {
+  margin: 0;
+  color: var(--ink-muted);
+}
+
+.isometric-preview__actions {
+  justify-items: end;
+}
+
+.isometric-preview__scope strong {
+  font-family: 'Public Sans', sans-serif;
+  font-size: 0.98rem;
+  letter-spacing: -0.03em;
+}
+
+.isometric-preview__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.preview-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid rgba(17, 17, 17, 0.1);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.68);
+  color: rgba(26, 26, 26, 0.82);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.isometric-preview__viewport {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  border-radius: calc(var(--radius-panel) - 0.2rem);
+  border: 1px solid rgba(17, 17, 17, 0.09);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(245, 240, 232, 0.9)),
+    repeating-linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.16),
+      rgba(255, 255, 255, 0.16) 16px,
+      rgba(216, 206, 188, 0.16) 16px,
+      rgba(216, 206, 188, 0.16) 32px
+    );
+  overflow: hidden;
+}
+
+.isometric-preview__svg {
+  flex: 1 1 auto;
+  inline-size: 100%;
+  block-size: 100%;
+}
+
+.isometric-preview__backdrop {
+  fill: rgba(255, 255, 255, 0.4);
+}
+
+.isometric-preview__slab,
+.isometric-preview__wall,
+.isometric-preview__furniture polygon {
+  stroke-linejoin: round;
+}
+
+.isometric-preview__slab,
+.isometric-preview__wall {
+  stroke-width: 0.9;
+}
+
+.isometric-preview__furniture polygon {
+  stroke-width: 0.8;
+}
+
+.isometric-preview__empty {
+  margin: auto;
+  max-width: 24rem;
+  text-align: center;
+}
+
 .cockpit-inspector {
   min-height: 0;
   min-width: 0;

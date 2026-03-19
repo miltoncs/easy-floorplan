@@ -44,6 +44,7 @@ import {
   selectTargetInDraft,
 } from '../lib/blueprint'
 import { createInitialState, editorReducer, type MutateDraftOptions } from '../lib/editorState'
+import { buildIsometricScene } from '../lib/isometric'
 import { resolveViewScope } from '../lib/viewScope'
 import {
   addPolar,
@@ -160,6 +161,14 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
       return activeFloor ? [activeFloor] : []
     },
     [activeFloor, activeStructure, state.draft, state.draft.activeFloorId, state.draft.viewScope],
+  )
+  const isometricScene = useMemo(
+    () =>
+      buildIsometricScene({
+        draft: state.draft,
+        resolvedScope: resolvedViewScope,
+      }),
+    [resolvedViewScope, state.draft],
   )
   const visibleWallTargets = useMemo<WallTarget[]>(
     () =>
@@ -1913,6 +1922,7 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
     selectedRoomGeometry,
     roomSuggestions,
     resolvedViewScope,
+    isometricScene,
     visibleFloors,
     viewBounds,
     viewBox,

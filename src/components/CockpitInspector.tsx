@@ -88,6 +88,7 @@ export function CockpitInspector() {
             activeStructureName={activeStructure?.name ?? 'None'}
             inputRef={inputRef}
             status={ui.status}
+            surfaceMode={draft.surfaceMode}
           />
         ) : null}
       </div>
@@ -444,22 +445,26 @@ export function CockpitInspector() {
     activeStructureName,
     inputRef,
     status,
+    surfaceMode,
   }: {
     activeStructureName: string
     inputRef: React.RefObject<HTMLInputElement | null>
     status: string
+    surfaceMode: typeof draft.surfaceMode
   }) {
     return (
       <div className="cockpit-inspector__stack">
         <section className="cockpit-inspector__section">
           <p className="panel-kicker">Preview</p>
           <h3>Isometric</h3>
+          <p className="cockpit-inspector__summary">
+            {surfaceMode === 'isometric'
+              ? 'Preview is active in the center stage.'
+              : 'Open a read-only isometric view for the current scope.'}
+          </p>
           <div className="workspace-toolbar-group wrap">
             <button className="primary-button" onClick={() => actions.openIsometricPreview()} type="button">
               Preview isometric
-            </button>
-            <button className="ghost-button" onClick={() => actions.openPlanSurface()} type="button">
-              Return to plan
             </button>
           </div>
         </section>

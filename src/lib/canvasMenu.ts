@@ -20,6 +20,10 @@ export type CanvasMenuActionId =
   | 'fit-view'
   | 'measure-from-here'
   | 'open-detail'
+  | 'preview-current-scope'
+  | 'preview-floor'
+  | 'preview-house'
+  | 'preview-room'
   | 'rotate-room-180'
   | 'rotate-room-clockwise-90'
   | 'rotate-room-counterclockwise-90'
@@ -89,6 +93,7 @@ export function getCanvasMenuItems(
       return [
         { kind: 'action', id: 'rename-structure', label: 'Rename structure' },
         { kind: 'action', id: 'add-floor', label: 'Add floor' },
+        { kind: 'action', id: 'preview-house', label: 'Preview whole house' },
         { kind: 'action', id: 'export-structure', label: 'Export structure JSON' },
         { kind: 'action', id: 'open-detail', label: 'Open detail page' },
       ]
@@ -97,6 +102,7 @@ export function getCanvasMenuItems(
         { kind: 'action', id: 'activate-floor', label: 'Activate floor' },
         { kind: 'action', id: 'rename-floor', label: 'Rename floor' },
         { kind: 'action', id: 'add-room', label: 'Add room' },
+        { kind: 'action', id: 'preview-floor', label: 'Preview floor' },
       ]
       if (options.canDeleteFloor) {
         items.push({ kind: 'action', id: 'delete-floor', label: 'Delete floor', destructive: true })
@@ -117,6 +123,7 @@ export function getCanvasMenuItems(
             { kind: 'action', id: 'rotate-room-custom', label: 'Custom' },
           ],
         },
+        { kind: 'action', id: 'preview-room', label: 'Preview room' },
         { kind: 'action', id: 'open-detail', label: 'Open detail page' },
         { kind: 'action', id: 'add-wall', label: 'Add wall' },
         { kind: 'action', id: 'delete-room', label: 'Delete room', destructive: true },
@@ -124,17 +131,20 @@ export function getCanvasMenuItems(
     case 'wall':
       return appendMeasurementItems([
         { kind: 'action', id: 'edit-wall', label: 'Edit wall measurements' },
+        { kind: 'action', id: 'preview-room', label: 'Preview room' },
         ...(assignRoomSubmenu ? [assignRoomSubmenu] : []),
         { kind: 'action', id: 'delete-wall', label: 'Delete wall', destructive: true },
       ], options)
     case 'corner':
       return appendMeasurementItems([
         { kind: 'action', id: 'edit-corner', label: 'Edit corner angle' },
+        { kind: 'action', id: 'preview-room', label: 'Preview room' },
       ], options)
     case 'furniture':
       return appendMeasurementItems([
         { kind: 'action', id: 'edit-furniture', label: 'Edit furniture' },
         { kind: 'action', id: 'rename-furniture', label: 'Rename furniture' },
+        { kind: 'action', id: 'preview-room', label: 'Preview room' },
         ...(assignRoomSubmenu ? [assignRoomSubmenu] : []),
         { kind: 'action', id: 'delete-furniture', label: 'Delete furniture', destructive: true },
       ], options)
@@ -143,6 +153,7 @@ export function getCanvasMenuItems(
         { kind: 'action', id: 'add-room', label: 'Add room' },
         { kind: 'action', id: 'add-floor', label: 'Add floor' },
         { kind: 'action', id: 'fit-view', label: 'Fit view' },
+        { kind: 'action', id: 'preview-current-scope', label: 'Preview current scope' },
         { kind: 'action', id: 'open-detail', label: 'Open detail page' },
       ]
       if (options.hasSelectedRoom) {
