@@ -686,7 +686,7 @@ function getFurnitureCornerSnapCandidate(room: Room, furniture: Furniture, snapS
   }
 }
 
-function getFurnitureCorners(furniture: Furniture) {
+export function getFurnitureCorners(furniture: Furniture) {
   const center = {
     x: furniture.x + furniture.width / 2,
     y: furniture.y + furniture.depth / 2,

@@ -80,6 +80,66 @@ export type ResolvedViewScope = {
   roomIds: string[]
 }
 
+export type IsometricSceneFloor = {
+  floorId: string
+  name: string
+  elevation: number
+  roomIds: string[]
+}
+
+export type IsometricWall = {
+  id: string
+  label: string
+  start: Point
+  end: Point
+  heading: number
+  length: number
+  baseElevation: number
+  topElevation: number
+}
+
+export type IsometricSlab = {
+  points: Point[]
+  elevation: number
+  area: number
+}
+
+export type IsometricFurnitureBlock = {
+  id: string
+  name: string
+  position: Point
+  center: Point
+  corners: Point[]
+  width: number
+  depth: number
+  rotation: number
+  height: number
+  baseElevation: number
+}
+
+export type IsometricSceneRoom = {
+  roomId: string
+  floorId: string
+  floorName: string
+  name: string
+  color: string
+  floorElevation: number
+  wallHeight: number
+  footprintBounds: Bounds
+  isOpen: boolean
+  slab: IsometricSlab | null
+  walls: IsometricWall[]
+  furniture: IsometricFurnitureBlock[]
+}
+
+export type IsometricScene = {
+  structureId: string | null
+  scopeKind: ViewScopeKind
+  bounds: Bounds | null
+  floors: IsometricSceneFloor[]
+  rooms: IsometricSceneRoom[]
+}
+
 export type DraftState = {
   structures: Structure[]
   activeStructureId: string
