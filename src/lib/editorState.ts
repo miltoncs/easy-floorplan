@@ -62,8 +62,19 @@ function shouldRefreshCameraFrame(previousDraft: DraftState, nextDraft: DraftSta
     previousDraft.activeStructureId !== nextDraft.activeStructureId ||
     previousDraft.activeFloorId !== nextDraft.activeFloorId ||
     previousDraft.editorMode !== nextDraft.editorMode ||
-    previousDraft.viewScope.kind !== nextDraft.viewScope.kind
+    getViewScopeKey(previousDraft.viewScope) !== getViewScopeKey(nextDraft.viewScope)
   )
+}
+
+function getViewScopeKey(scope: DraftState['viewScope']) {
+  switch (scope.kind) {
+    case 'floor':
+      return `floor:${scope.floorId}`
+    case 'house':
+      return `house:${scope.structureId}`
+    default:
+      return scope.kind
+  }
 }
 
 export type MutateDraftOptions = {

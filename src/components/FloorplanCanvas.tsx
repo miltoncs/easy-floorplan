@@ -295,6 +295,7 @@ export function FloorplanCanvas() {
     activeStructure,
     draft,
     roomSuggestions,
+    resolvedViewScope,
     selectedRoom,
     selectedRoomGeometry,
     ui,
@@ -371,21 +372,24 @@ export function FloorplanCanvas() {
         : null,
     [activeFloor, selectedRoom, selectedRoomGeometry],
   )
-  const showAllVisibilityRooms = draft.canvasRoomVisibilityScope === 'all'
+  const resolvedScopeRoomIdSet = useMemo(() => new Set(resolvedViewScope.roomIds), [resolvedViewScope.roomIds])
   const scopedRoomEntries = useMemo(
-    () =>
-      showAllVisibilityRooms
-        ? visibleFloors.flatMap((floor) =>
-            floor.rooms.map((room) => ({
-              floorId: floor.id,
-              room,
-              geometry: roomToGeometry(room),
-            })),
-          )
-        : selectedRoomEntry
-          ? [selectedRoomEntry]
-          : [],
-    [selectedRoomEntry, showAllVisibilityRooms, visibleFloors],
+    () => {
+      if (draft.viewScope.kind === 'room') {
+        return selectedRoomEntry ? [selectedRoomEntry] : []
+      }
+
+      return visibleFloors.flatMap((floor) =>
+        floor.rooms
+          .filter((room) => draft.viewScope.kind !== 'selection' || resolvedScopeRoomIdSet.has(room.id))
+          .map((room) => ({
+            floorId: floor.id,
+            room,
+            geometry: roomToGeometry(room),
+          })),
+      )
+    },
+    [draft.viewScope.kind, resolvedScopeRoomIdSet, selectedRoomEntry, visibleFloors],
   )
   const wallLabelRooms = useMemo(
     () => (draft.showWallLabels ? scopedRoomEntries : selectedRoomEntry ? [selectedRoomEntry] : []),
@@ -435,10 +439,14 @@ export function FloorplanCanvas() {
                     buildSuggestionPreview(selectedRoomEntry.room, selectedRoomEntry.floorId, suggestion, true),
                   )
                 : []),
-              ...(showAllVisibilityRooms
+              ...(draft.viewScope.kind !== 'room'
                 ? visibleFloors.flatMap((floor) =>
                     floor.rooms.flatMap((room) => {
                       if (selectedRoomEntry && floor.id === selectedRoomEntry.floorId && room.id === selectedRoomEntry.room.id) {
+                        return []
+                      }
+
+                      if (draft.viewScope.kind === 'selection' && !resolvedScopeRoomIdSet.has(room.id)) {
                         return []
                       }
 
@@ -468,7 +476,8 @@ export function FloorplanCanvas() {
       shapeSuggestions,
       showCanvasInferencePreviews,
       showSimplifiedDragPreview,
-      showAllVisibilityRooms,
+      draft.viewScope.kind,
+      resolvedScopeRoomIdSet,
       viewRotationQuarterTurns,
       viewBox,
       visibleFloors,
@@ -1646,18 +1655,6 @@ export function FloorplanCanvas() {
         <>
           <div aria-label="Canvas display toggles" className="canvas-toolbar canvas-toolbar--toggles">
             <div className="canvas-toolbar-group canvas-toolbar-group--toggles">
-              <label className="canvas-toolbar-select">
-                <select
-                  aria-label="View options room scope"
-                  value={draft.canvasRoomVisibilityScope}
-                  onChange={(event) =>
-                    actions.setCanvasRoomVisibilityScope(event.target.value as CanvasRoomVisibilityScope)
-                  }
-                >
-                  <option value="all">All Rooms</option>
-                  <option value="selected">Selected Room</option>
-                </select>
-              </label>
               <label className="toggle">
                 <input checked={draft.showGrid} type="checkbox" onChange={(event) => actions.toggleGrid(event.target.checked)} />
                 <span>Grid</span>
@@ -1677,22 +1674,6 @@ export function FloorplanCanvas() {
                   onChange={(event) => actions.toggleRoomFloorLabels(event.target.checked)}
                 />
                 <span>Labels</span>
-              </label>
-              <label className="toggle">
-                <input
-                  checked={draft.showWallLabels}
-                  type="checkbox"
-                  onChange={(event) => actions.toggleWallLabels(event.target.checked)}
-                />
-                <span>Wall Lengths</span>
-              </label>
-              <label className="toggle">
-                <input
-                  checked={draft.showAngleLabels}
-                  type="checkbox"
-                  onChange={(event) => actions.toggleAngleLabels(event.target.checked)}
-                />
-                <span>Angles</span>
               </label>
             </div>
           </div>

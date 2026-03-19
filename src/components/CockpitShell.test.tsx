@@ -21,4 +21,14 @@ describe('cockpit shell', () => {
     expect(screen.getByRole('button', { name: /preview isometric/i })).toBeVisible()
     expect(screen.getByRole('button', { name: /export workspace json/i })).toBeVisible()
   })
+
+  it('switches the active scope from room to floor', async () => {
+    const user = userEvent.setup()
+
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: /floor view/i }))
+
+    expect(screen.getByText(/3 rooms in view/i)).toBeVisible()
+  })
 })

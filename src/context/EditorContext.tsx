@@ -141,17 +141,25 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
     [state.draft, state.ui.selectionTargets],
   )
   const visibleFloors = useMemo(
-    () =>
-      !activeStructure
-        ? []
-        : state.draft.editorMode === 'stacked'
-          ? [...activeStructure.floors].sort((left, right) =>
-              left.id === state.draft.activeFloorId ? 1 : right.id === state.draft.activeFloorId ? -1 : 0,
-            )
-          : activeFloor
-            ? [activeFloor]
-            : [],
-    [activeFloor, activeStructure, state.draft.activeFloorId, state.draft.editorMode],
+    () => {
+      if (!activeStructure) {
+        return []
+      }
+
+      if (state.draft.viewScope.kind === 'house') {
+        return [...activeStructure.floors].sort((left, right) =>
+          left.id === state.draft.activeFloorId ? 1 : right.id === state.draft.activeFloorId ? -1 : 0,
+        )
+      }
+
+      if (state.draft.viewScope.kind === 'floor') {
+        const scopeFloor = findFloorById(state.draft, activeStructure.id, state.draft.viewScope.floorId) ?? activeFloor
+        return scopeFloor ? [scopeFloor] : []
+      }
+
+      return activeFloor ? [activeFloor] : []
+    },
+    [activeFloor, activeStructure, state.draft, state.draft.activeFloorId, state.draft.viewScope],
   )
   const visibleWallTargets = useMemo<WallTarget[]>(
     () =>
@@ -1867,6 +1875,7 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
       }, {
         touchStructure: false,
         recordHistory: false,
+        resetCamera: true,
       }),
     setSurfaceMode: (surfaceMode: DraftState['surfaceMode']) =>
       mutateDraft((draft) => {
