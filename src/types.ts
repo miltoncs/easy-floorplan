@@ -1,5 +1,13 @@
 export type EditorMode = 'rooms' | 'furniture' | 'stacked'
 export type CanvasRoomVisibilityScope = 'all' | 'selected'
+export type ViewScopeKind = 'room' | 'selection' | 'floor' | 'house'
+export type SurfaceMode = 'plan' | 'isometric'
+
+export type ViewScopeState =
+  | { kind: 'room' }
+  | { kind: 'selection' }
+  | { kind: 'floor'; floorId: string }
+  | { kind: 'house'; structureId: string }
 
 export type NamedEntityKind = 'structure' | 'floor' | 'room' | 'furniture'
 export type RotationDirection = 'clockwise' | 'counterclockwise'
@@ -63,12 +71,23 @@ export type Structure = {
   floors: Floor[]
 }
 
+export type ResolvedViewScope = {
+  kind: ViewScopeKind
+  structureId: string | null
+  floorId: string | null
+  floors: Floor[]
+  rooms: Room[]
+  roomIds: string[]
+}
+
 export type DraftState = {
   structures: Structure[]
   activeStructureId: string
   activeFloorId: string
   selectedRoomId: string | null
   selectedFurnitureId: string | null
+  viewScope: ViewScopeState
+  surfaceMode: SurfaceMode
   editorMode: EditorMode
   showGrid: boolean
   showInferred: boolean

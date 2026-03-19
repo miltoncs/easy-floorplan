@@ -143,6 +143,19 @@ export function ensureSelections(state: DraftState): DraftState {
       ? null
       : activeFloor.rooms.find((room) => room.id === state.selectedRoomId) ?? activeFloor.rooms[0] ?? null
 
+  const normalizedViewScope =
+    state.viewScope.kind === 'floor'
+      ? {
+          kind: 'floor' as const,
+          floorId: activeFloor.id,
+        }
+      : state.viewScope.kind === 'house'
+        ? {
+            kind: 'house' as const,
+            structureId: activeStructure.id,
+          }
+        : state.viewScope
+
   return {
     ...state,
     activeStructureId: activeStructure.id,
@@ -150,6 +163,7 @@ export function ensureSelections(state: DraftState): DraftState {
     selectedRoomId: state.selectedRoomId === null ? null : selectedRoom?.id ?? null,
     selectedFurnitureId:
       selectedRoom?.furniture.find((item) => item.id === state.selectedFurnitureId)?.id ?? null,
+    viewScope: normalizedViewScope,
   }
 }
 
@@ -276,6 +290,12 @@ export function normalizeDraftCanvasSettings(state: DraftState) {
   if (state.canvasRoomVisibilityScope !== 'all' && state.canvasRoomVisibilityScope !== 'selected') {
     state.canvasRoomVisibilityScope = 'selected'
   }
+  if (!isViewScopeState(state.viewScope)) {
+    state.viewScope = { kind: 'room' }
+  }
+  if (state.surfaceMode !== 'plan' && state.surfaceMode !== 'isometric') {
+    state.surfaceMode = 'plan'
+  }
   if (typeof state.showRoomFloorLabels !== 'boolean') {
     state.showRoomFloorLabels = true
   }
@@ -332,6 +352,26 @@ export function normalizeDraftCanvasSettings(state: DraftState) {
       MIN_FURNITURE_CORNER_SNAP_STRENGTH,
       MAX_FURNITURE_CORNER_SNAP_STRENGTH,
     )
+  }
+}
+
+function isViewScopeState(value: unknown): value is DraftState['viewScope'] {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+
+  const candidate = value as DraftState['viewScope']
+
+  switch (candidate.kind) {
+    case 'room':
+    case 'selection':
+      return true
+    case 'floor':
+      return typeof candidate.floorId === 'string'
+    case 'house':
+      return typeof candidate.structureId === 'string'
+    default:
+      return false
   }
 }
 

@@ -44,6 +44,7 @@ import {
   selectTargetInDraft,
 } from '../lib/blueprint'
 import { createInitialState, editorReducer, type MutateDraftOptions } from '../lib/editorState'
+import { resolveViewScope } from '../lib/viewScope'
 import {
   addPolar,
   angleDelta,
@@ -134,6 +135,10 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
   const roomSuggestions = useMemo(
     () => rawRoomSuggestions.filter((suggestion) => !dismissedSuggestionIdSet.has(suggestion.id)),
     [dismissedSuggestionIdSet, rawRoomSuggestions],
+  )
+  const resolvedViewScope = useMemo(
+    () => resolveViewScope(state.draft, state.ui.selectionTargets, state.draft.viewScope),
+    [state.draft, state.ui.selectionTargets],
   )
   const visibleFloors = useMemo(
     () =>
@@ -1856,6 +1861,34 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
       downloadJsonFile(makeWorkspaceExportFilename(activeStructure?.name), serializeExportEnvelope(envelope))
       setStatus('Workspace exported as JSON.')
     },
+    setViewScope: (viewScope: DraftState['viewScope']) =>
+      mutateDraft((draft) => {
+        draft.viewScope = viewScope
+      }, {
+        touchStructure: false,
+        recordHistory: false,
+      }),
+    setSurfaceMode: (surfaceMode: DraftState['surfaceMode']) =>
+      mutateDraft((draft) => {
+        draft.surfaceMode = surfaceMode
+      }, {
+        touchStructure: false,
+        recordHistory: false,
+      }),
+    openIsometricPreview: () =>
+      mutateDraft((draft) => {
+        draft.surfaceMode = 'isometric'
+      }, {
+        touchStructure: false,
+        recordHistory: false,
+      }),
+    openPlanSurface: () =>
+      mutateDraft((draft) => {
+        draft.surfaceMode = 'plan'
+      }, {
+        touchStructure: false,
+        recordHistory: false,
+      }),
   }
 
   return {
@@ -1870,6 +1903,7 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
     selectedFurniture,
     selectedRoomGeometry,
     roomSuggestions,
+    resolvedViewScope,
     visibleFloors,
     viewBounds,
     viewBox,

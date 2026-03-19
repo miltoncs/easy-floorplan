@@ -105,6 +105,8 @@ export function createSeedState(): DraftState {
     activeFloorId: firstFloor.id,
     selectedRoomId: firstFloor.rooms[0].id,
     selectedFurnitureId: null,
+    viewScope: { kind: 'room' },
+    surfaceMode: 'plan',
     editorMode: 'rooms',
     showGrid: true,
     showInferred: true,

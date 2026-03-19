@@ -61,7 +61,8 @@ function shouldRefreshCameraFrame(previousDraft: DraftState, nextDraft: DraftSta
   return (
     previousDraft.activeStructureId !== nextDraft.activeStructureId ||
     previousDraft.activeFloorId !== nextDraft.activeFloorId ||
-    previousDraft.editorMode !== nextDraft.editorMode
+    previousDraft.editorMode !== nextDraft.editorMode ||
+    previousDraft.viewScope.kind !== nextDraft.viewScope.kind
   )
 }
 
