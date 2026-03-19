@@ -14,7 +14,25 @@ export function CockpitTopBar() {
 
   return (
     <div className="cockpit-topbar panel-card">
-      <div className="cockpit-topbar__identity">
+      <div
+        className="cockpit-topbar__identity"
+        data-testid="structure-header"
+        onContextMenu={(event) => {
+          if (!activeStructure) {
+            return
+          }
+
+          event.preventDefault()
+          actions.openContextMenu({
+            x: event.clientX,
+            y: event.clientY,
+            target: {
+              kind: 'structure',
+              structureId: activeStructure.id,
+            },
+          })
+        }}
+      >
         <span className="panel-kicker">Project</span>
         <div className="cockpit-topbar__identity-row">
           <strong>{activeStructure?.name ?? 'No structure'}</strong>

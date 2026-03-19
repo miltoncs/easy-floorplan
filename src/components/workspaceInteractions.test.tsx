@@ -1,6 +1,7 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
+import App from '../App'
 import { createSeedState } from '../data/seed'
 import { MIN_WALL_STROKE_WIDTH_PX, createFloor, createFurniture, createRoom, createSegment, getRoomSuggestions } from '../lib/blueprint'
 import { MAX_CAMERA_ZOOM } from '../lib/camera'
@@ -1387,40 +1388,31 @@ describe('workspace interactions', () => {
     expect(screen.getByLabelText('Canvas legend')).toHaveTextContent("Bold line every 4'")
   })
 
-  it('toggles canvas angle labels', async () => {
-    const user = userEvent.setup()
+  it('keeps angle labels scoped to the selected room in room view', () => {
     const draft = createSeedState()
-    const firstCorner = draft.structures[0].floors[0].rooms[0].segments[0]
+    const livingRoomCorner = draft.structures[0].floors[0].rooms[0].segments[0]
+    const hallCorner = draft.structures[0].floors[0].rooms[1].segments[0]
 
     renderEditor({ draft })
 
-    expect(screen.getByTestId(`corner-hover-overlay-${firstCorner.id}`)).toBeInTheDocument()
-
-    await user.click(screen.getByRole('checkbox', { name: 'Angles' }))
-
-    expect(screen.queryByTestId(`corner-hover-overlay-${firstCorner.id}`)).not.toBeInTheDocument()
-
-    fireEvent.mouseEnter(screen.getByTestId(`corner-hit-${firstCorner.id}`))
-
-    expect(screen.getByTestId(`corner-hover-overlay-${firstCorner.id}`)).toBeInTheDocument()
-
-    await user.click(screen.getByRole('checkbox', { name: 'Angles' }))
-
-    expect(screen.getByTestId(`corner-hover-overlay-${firstCorner.id}`)).toBeInTheDocument()
+    expect(screen.getByTestId(`corner-hover-overlay-${livingRoomCorner.id}`)).toBeInTheDocument()
+    expect(screen.queryByTestId(`corner-hover-overlay-${hallCorner.id}`)).not.toBeInTheDocument()
   })
 
-  it('expands wall length and angle labels to all rooms when the view scope is set to all rooms', async () => {
-    const user = userEvent.setup()
+  it('expands wall length and angle labels when the floor scope is active', () => {
     const draft = createSeedState()
-    const hall = draft.structures[0].floors[0].rooms[1]
+    const floor = draft.structures[0].floors[0]
+    const hall = floor.rooms[1]
     const hallWall = hall.segments[0]
 
-    renderEditor({ draft })
+    const firstRender = renderEditor({ draft })
 
     expect(screen.queryByTestId(`wall-label-${hallWall.id}`)).not.toBeInTheDocument()
     expect(screen.queryByTestId(`corner-hover-overlay-${hallWall.id}`)).not.toBeInTheDocument()
 
-    await user.selectOptions(screen.getByRole('combobox', { name: 'View options room scope' }), 'All Rooms')
+    firstRender.unmount()
+    draft.viewScope = { kind: 'floor', floorId: floor.id }
+    renderEditor({ draft })
 
     expect(screen.getByTestId(`wall-label-${hallWall.id}`)).toBeInTheDocument()
     expect(screen.getByTestId(`corner-hover-overlay-${hallWall.id}`)).toBeInTheDocument()
@@ -1489,16 +1481,12 @@ describe('workspace interactions', () => {
     )
   })
 
-  it('toggles canvas wall length labels and shows a hovered wall length when hidden', async () => {
-    const user = userEvent.setup()
+  it('shows a hovered wall length when labels are disabled in draft settings', async () => {
     const draft = createSeedState()
     const firstWall = draft.structures[0].floors[0].rooms[0].segments[0]
+    draft.showWallLabels = false
 
     renderEditor({ draft })
-
-    expect(screen.getByTestId(`wall-label-${firstWall.id}`)).toBeInTheDocument()
-
-    await user.click(screen.getByRole('checkbox', { name: 'Wall Lengths' }))
 
     expect(screen.queryByTestId(`wall-label-${firstWall.id}`)).not.toBeInTheDocument()
 
@@ -1507,10 +1495,6 @@ describe('workspace interactions', () => {
 
     fireEvent.mouseLeave(screen.getByTestId(`wall-hit-${firstWall.id}`))
     await waitFor(() => expect(screen.queryByTestId(`wall-label-${firstWall.id}`)).not.toBeInTheDocument())
-
-    await user.click(screen.getByRole('checkbox', { name: 'Wall Lengths' }))
-
-    expect(screen.getByTestId(`wall-label-${firstWall.id}`)).toBeInTheDocument()
   })
 
   it('keeps each wall length label closer to its own wall than a nearby parallel wall', () => {
@@ -1553,8 +1537,7 @@ describe('workspace interactions', () => {
     )
   })
 
-  it('shows inferred wall previews for non-selected rooms when the view scope is set to all rooms', async () => {
-    const user = userEvent.setup()
+  it('shows inferred wall previews for non-selected rooms when the floor scope is active', () => {
     const draft = createSeedState()
     const floor = draft.structures[0].floors[0]
     const bonusRoom = createRoom({
@@ -1577,11 +1560,13 @@ describe('workspace interactions', () => {
 
     expect(bonusSuggestion).toBeTruthy()
 
-    renderEditor({ draft })
+    const firstRender = renderEditor({ draft })
 
     expect(screen.queryByTestId(`suggested-path-${bonusSuggestion!.id}`)).not.toBeInTheDocument()
 
-    await user.selectOptions(screen.getByRole('combobox', { name: 'View options room scope' }), 'All Rooms')
+    firstRender.unmount()
+    draft.viewScope = { kind: 'floor', floorId: floor.id }
+    renderEditor({ draft })
 
     expect(screen.getByTestId(`suggested-path-${bonusSuggestion!.id}`)).toBeInTheDocument()
     expect(screen.queryByTestId(`canvas-suggestion-actions-${bonusSuggestion!.id}`)).not.toBeInTheDocument()
@@ -1644,6 +1629,22 @@ describe('workspace interactions', () => {
 
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true, shiftKey: true })
     await waitFor(() => expect(screen.getByRole('heading', { name: nextRoomName })).toBeInTheDocument())
+  })
+
+  it('opens isometric preview with Cmd/Ctrl+Shift+P and returns to plan on escape', async () => {
+    render(<App />)
+
+    expect(screen.getByLabelText('Interactive floorplan canvas')).toBeInTheDocument()
+
+    fireEvent.keyDown(window, { key: 'P', metaKey: true, shiftKey: true })
+
+    await waitFor(() => expect(screen.getByLabelText('Isometric preview')).toBeInTheDocument())
+    expect(screen.queryByLabelText('Interactive floorplan canvas')).not.toBeInTheDocument()
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+
+    await waitFor(() => expect(screen.getByLabelText('Interactive floorplan canvas')).toBeInTheDocument())
+    expect(screen.queryByLabelText('Isometric preview')).not.toBeInTheDocument()
   })
 
   it('does not trigger undo while typing in text inputs', async () => {
@@ -2113,21 +2114,25 @@ describe('workspace interactions', () => {
 
     fireEvent.contextMenu(screen.getByTestId('structure-header'))
     expect(screen.getByRole('menu')).toHaveTextContent('Rename structure')
+    expect(screen.getByRole('menu')).toHaveTextContent('Preview whole house')
     fireEvent.pointerDown(document.body)
 
     fireEvent.contextMenu(screen.getByTestId(`floor-label-${floor.id}`))
     expect(screen.getByRole('menu')).toHaveTextContent('Rename floor')
+    expect(screen.getByRole('menu')).toHaveTextContent('Preview floor')
     fireEvent.pointerDown(document.body)
 
     fireEvent.contextMenu(screen.getByTestId(`room-label-${room.id}`))
     expect(screen.getByRole('menu')).toHaveTextContent('Rename room')
     expect(screen.getByRole('menu')).toHaveTextContent('Rotate')
+    expect(screen.getByRole('menu')).toHaveTextContent('Preview room')
     expect(screen.getByRole('menu')).toHaveTextContent('Measure From Here')
     fireEvent.pointerDown(document.body)
 
     fireEvent.contextMenu(screen.getByTestId(`wall-label-${wall.id}`))
     const wallMenu = screen.getByRole('menu')
     expect(wallMenu).toHaveTextContent('Edit wall measurements')
+    expect(wallMenu).toHaveTextContent('Preview room')
     expect(wallMenu).not.toHaveTextContent('Insert wall after')
     expect(wallMenu).toHaveTextContent('Measure From Here')
     expect(wallMenu).toHaveTextContent('Assign to Room')
@@ -2143,6 +2148,7 @@ describe('workspace interactions', () => {
     const cornerMenu = screen.getByRole('menu')
     expect(cornerMenu).toHaveTextContent('Edit corner angle')
     expect(cornerMenu).toHaveTextContent('Edit wall measurements')
+    expect(cornerMenu).toHaveTextContent('Preview room')
     expect(cornerMenu).not.toHaveTextContent('Insert wall after')
     expect(within(cornerMenu).getAllByRole('menuitem', { name: 'Measure From Here' })).toHaveLength(1)
     expect(within(cornerMenu).getByRole('separator')).toBeInTheDocument()
@@ -2155,12 +2161,14 @@ describe('workspace interactions', () => {
 
     fireEvent.contextMenu(screen.getByTestId('canvas-empty'))
     expect(screen.getByRole('menu')).toHaveTextContent('Fit view')
+    expect(screen.getByRole('menu')).toHaveTextContent('Preview current scope')
     expect(screen.getByRole('menu')).toHaveTextContent('Measure From Here')
     fireEvent.pointerDown(document.body)
 
     await user.click(screen.getByRole('button', { name: 'Furniture' }))
     fireEvent.contextMenu(screen.getByTestId(`furniture-${furniture.id}`))
     expect(screen.getByRole('menu')).toHaveTextContent('Edit furniture')
+    expect(screen.getByRole('menu')).toHaveTextContent('Preview room')
     expect(screen.getByRole('menu')).toHaveTextContent('Measure From Here')
     expect(screen.getByRole('menu')).toHaveTextContent('Assign to Room')
   })

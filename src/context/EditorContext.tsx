@@ -160,7 +160,7 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
 
       return activeFloor ? [activeFloor] : []
     },
-    [activeFloor, activeStructure, state.draft, state.draft.activeFloorId, state.draft.viewScope],
+    [activeFloor, activeStructure, state.draft],
   )
   const isometricScene = useMemo(
     () =>
@@ -228,6 +228,16 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
   }
 
   const setStatus = (status: string) => dispatch({ type: 'setStatus', status })
+  const setSurfaceMode = (surfaceMode: DraftState['surfaceMode']) =>
+    mutateDraft((draft) => {
+      draft.surfaceMode = surfaceMode
+    }, {
+      touchStructure: false,
+      recordHistory: false,
+    })
+  const openIsometricPreview = () => setSurfaceMode('isometric')
+  const openPlanSurface = () => setSurfaceMode('plan')
+  const resetCamera = () => dispatch({ type: 'resetCamera' })
 
   const selectTarget = (target: CanvasTarget, options?: { status?: string }) => {
     mutateDraft(
@@ -436,6 +446,12 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
 
   const handleGlobalKeyDown = useEffectEvent((event: KeyboardEvent) => {
     if (event.key === 'Escape') {
+      if (state.draft.surfaceMode === 'isometric') {
+        event.preventDefault()
+        openPlanSurface()
+        return
+      }
+
       dispatch({ type: 'dismissTransientUi' })
       dispatch({ type: 'clearSelection' })
       return
@@ -445,11 +461,23 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
       return
     }
 
+    if (!event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey && event.key === '0') {
+      event.preventDefault()
+      resetCamera()
+      return
+    }
+
     if (!(event.metaKey || event.ctrlKey) || event.altKey) {
       return
     }
 
     const key = event.key.toLowerCase()
+
+    if (key === 'p' && event.shiftKey) {
+      event.preventDefault()
+      openIsometricPreview()
+      return
+    }
 
     if (key === 'a' && !event.shiftKey) {
       event.preventDefault()
@@ -1861,7 +1889,7 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
       }),
     setCamera: (camera: Omit<EditorUiState['camera'], 'frameBounds'> & { frameBounds?: EditorUiState['camera']['frameBounds'] }) =>
       dispatch({ type: 'setCamera', camera }),
-    resetCamera: () => dispatch({ type: 'resetCamera' }),
+    resetCamera,
     undo: () => dispatch({ type: 'undo' }),
     redo: () => dispatch({ type: 'redo' }),
     exportActiveStructure: () => {
@@ -1886,27 +1914,9 @@ function useCreateEditorContextValue(initialDraft?: DraftState) {
         recordHistory: false,
         resetCamera: true,
       }),
-    setSurfaceMode: (surfaceMode: DraftState['surfaceMode']) =>
-      mutateDraft((draft) => {
-        draft.surfaceMode = surfaceMode
-      }, {
-        touchStructure: false,
-        recordHistory: false,
-      }),
-    openIsometricPreview: () =>
-      mutateDraft((draft) => {
-        draft.surfaceMode = 'isometric'
-      }, {
-        touchStructure: false,
-        recordHistory: false,
-      }),
-    openPlanSurface: () =>
-      mutateDraft((draft) => {
-        draft.surfaceMode = 'plan'
-      }, {
-        touchStructure: false,
-        recordHistory: false,
-      }),
+    setSurfaceMode,
+    openIsometricPreview,
+    openPlanSurface,
   }
 
   return {

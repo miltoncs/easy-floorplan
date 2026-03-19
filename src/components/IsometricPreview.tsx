@@ -6,7 +6,7 @@ import type { IsometricFurnitureBlock, IsometricSceneRoom, Point } from '../type
 const ISO_X_SCALE = Math.cos(Math.PI / 6)
 const ISO_Y_SCALE = 0.5
 const ISO_Z_SCALE = 1
-const VIEWBOX_PADDING = 8
+const VIEWBOX_PADDING = 24
 
 export function IsometricPreview() {
   const { isometricScene, resolvedViewScope, actions } = useEditor()
@@ -51,6 +51,7 @@ export function IsometricPreview() {
           <svg
             aria-hidden="true"
             className="isometric-preview__svg"
+            preserveAspectRatio="xMidYMid meet"
             viewBox={projectedScene.viewBox}
             xmlns="http://www.w3.org/2000/svg"
           >
@@ -176,23 +177,27 @@ function projectScene(scene: ReturnType<typeof useEditor>['isometricScene']) {
 }
 
 function projectRoom(room: IsometricSceneRoom): ProjectedRoom {
+  const walls = room.walls
+    .map((wall) => ({
+      id: wall.id,
+      depth: wall.start.x + wall.start.y + wall.baseElevation,
+      points: [
+        projectPoint(wall.start, wall.baseElevation),
+        projectPoint(wall.end, wall.baseElevation),
+        projectPoint(wall.end, wall.topElevation),
+        projectPoint(wall.start, wall.topElevation),
+      ],
+    }))
+    .sort((left, right) => left.depth - right.depth)
+
   return {
     roomId: room.roomId,
     color: room.color,
     slab: room.slab ? room.slab.points.map((point) => projectPoint(point, room.slab!.elevation)) : null,
-    walls: room.walls
-      .map((wall) => ({
-        id: wall.id,
-        depth: wall.start.x + wall.start.y + wall.baseElevation,
-        points: [
-          projectPoint(wall.start, wall.baseElevation),
-          projectPoint(wall.end, wall.baseElevation),
-          projectPoint(wall.end, wall.topElevation),
-          projectPoint(wall.start, wall.topElevation),
-        ],
-      }))
-      .sort((left, right) => left.depth - right.depth)
-      .map(({ depth: _depth, ...wall }) => wall),
+    walls: walls.map((wall) => ({
+      id: wall.id,
+      points: wall.points,
+    })),
     furniture: room.furniture
       .map((item) => projectFurniture(item))
       .sort((left, right) => getPolygonDepth(left.leftFace) - getPolygonDepth(right.leftFace)),

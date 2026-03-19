@@ -1,3 +1,5 @@
+/* eslint-disable react-refresh/only-export-components */
+
 import { useEffect, useRef } from 'react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { render } from '@testing-library/react'

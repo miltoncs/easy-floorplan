@@ -45,7 +45,6 @@ import type {
   AnchoredWallDialogAnchor,
   Bounds,
   CanvasMeasurement,
-  CanvasRoomVisibilityScope,
   CanvasTarget,
   Floor,
   Point,

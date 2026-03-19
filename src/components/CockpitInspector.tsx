@@ -1,9 +1,10 @@
-import { useRef, useState, type ChangeEvent } from 'react'
+import { useRef, useState, type ChangeEvent, type RefObject } from 'react'
 import { MetricCard } from './MetricCard'
 import { useEditor } from '../context/EditorContext'
 import { describeCornerAngle, formatFeet, getRoomCorners } from '../lib/geometry'
 import { parseImportedJson } from '../lib/serialization'
 import { CockpitInspectorTabs, type InspectorTabId } from './CockpitInspectorTabs'
+import type { DraftState, Furniture, Room, RoomGeometry, RoomSuggestion, Structure, SurfaceMode } from '../types'
 
 const JSON_PREVIEW = `{
   "kind": "workspace",
@@ -11,6 +12,39 @@ const JSON_PREVIEW = `{
   "exportedAt": "2026-03-09T00:00:00.000Z",
   "payload": { ... }
 }`
+
+type PropertiesPanelProps = {
+  activeFloorId: string | null
+  activeFloorName: string
+  activeStructure: Structure | null
+  draft: DraftState
+  roomCornersCount: number
+  selectedRoom: Room | null
+  selectedRoomGeometry: RoomGeometry | null
+  structureRoomCount: number
+}
+
+type MeasurementsPanelProps = {
+  activeFloorId: string | null
+  activeStructureId: string | null
+  roomCorners: ReturnType<typeof getRoomCorners>
+  roomSuggestions: RoomSuggestion[]
+  selectedRoom: Room | null
+}
+
+type FurniturePanelProps = {
+  activeFloorId: string | null
+  activeStructureId: string | null
+  selectedFurniture: Furniture | null
+  selectedRoom: Room | null
+}
+
+type PreviewExportPanelProps = {
+  activeStructureName: string
+  inputRef: RefObject<HTMLInputElement | null>
+  status: string
+  surfaceMode: SurfaceMode
+}
 
 export function CockpitInspector() {
   const inputRef = useRef<HTMLInputElement | null>(null)
@@ -53,6 +87,7 @@ export function CockpitInspector() {
       <div className="cockpit-inspector__panel" role="tabpanel">
         {activeTab === 'properties' ? (
           <PropertiesPanel
+            activeFloorId={activeFloor?.id ?? null}
             activeFloorName={activeFloor?.name ?? 'No floor'}
             activeStructure={activeStructure}
             draft={draft}
@@ -67,7 +102,6 @@ export function CockpitInspector() {
           <MeasurementsPanel
             activeFloorId={activeFloor?.id ?? null}
             activeStructureId={activeStructure?.id ?? null}
-            roomCornersCount={roomCorners.length}
             roomCorners={roomCorners}
             roomSuggestions={roomSuggestions}
             selectedRoom={selectedRoom}
@@ -78,7 +112,7 @@ export function CockpitInspector() {
           <FurniturePanel
             activeFloorId={activeFloor?.id ?? null}
             activeStructureId={activeStructure?.id ?? null}
-            selectedFurniture={selectedFurniture}
+            selectedFurniture={selectedFurniture ?? null}
             selectedRoom={selectedRoom}
           />
         ) : null}
@@ -96,6 +130,7 @@ export function CockpitInspector() {
   )
 
   function PropertiesPanel({
+    activeFloorId,
     activeFloorName,
     activeStructure,
     draft,
@@ -103,15 +138,7 @@ export function CockpitInspector() {
     selectedRoom,
     selectedRoomGeometry,
     structureRoomCount,
-  }: {
-    activeFloorName: string
-    activeStructure: typeof activeStructure
-    draft: typeof draft
-    roomCornersCount: number
-    selectedRoom: typeof selectedRoom
-    selectedRoomGeometry: typeof selectedRoomGeometry
-    structureRoomCount: number
-  }) {
+  }: PropertiesPanelProps) {
     return (
       <div className="cockpit-inspector__stack">
         {selectedRoom && selectedRoomGeometry ? (
@@ -137,7 +164,7 @@ export function CockpitInspector() {
                     actions.mutateDraft((draftState) => {
                       const room = draftState.structures
                         .find((structure) => structure.id === activeStructure?.id)
-                        ?.floors.find((floor) => floor.id === activeFloor?.id)
+                        ?.floors.find((floor) => floor.id === activeFloorId)
                         ?.rooms.find((room) => room.id === selectedRoom.id)
 
                       if (room) {
@@ -159,7 +186,7 @@ export function CockpitInspector() {
                     actions.mutateDraft((draftState) => {
                       const floor = draftState.structures
                         .find((structure) => structure.id === activeStructure?.id)
-                        ?.floors.find((floor) => floor.id === activeFloor?.id)
+                        ?.floors.find((floor) => floor.id === activeFloorId)
 
                       if (floor) {
                         floor.elevation = Number(event.target.value)
@@ -179,7 +206,7 @@ export function CockpitInspector() {
                     actions.mutateDraft((draftState) => {
                       const room = draftState.structures
                         .find((structure) => structure.id === activeStructure?.id)
-                        ?.floors.find((floor) => floor.id === activeFloor?.id)
+                        ?.floors.find((floor) => floor.id === activeFloorId)
                         ?.rooms.find((room) => room.id === selectedRoom.id)
 
                       if (room) {
@@ -236,14 +263,7 @@ export function CockpitInspector() {
     roomCorners,
     roomSuggestions,
     selectedRoom,
-  }: {
-    activeFloorId: string | null
-    activeStructureId: string | null
-    roomCorners: ReturnType<typeof getRoomCorners>
-    roomSuggestions: typeof roomSuggestions
-    selectedRoom: typeof selectedRoom
-    roomCornersCount: number
-  }) {
+  }: MeasurementsPanelProps) {
     return selectedRoom ? (
       <div className="cockpit-inspector__stack">
         <div className="section-actions">
@@ -373,12 +393,7 @@ export function CockpitInspector() {
     activeStructureId,
     selectedFurniture,
     selectedRoom,
-  }: {
-    activeFloorId: string | null
-    activeStructureId: string | null
-    selectedFurniture: typeof selectedFurniture
-    selectedRoom: typeof selectedRoom
-  }) {
+  }: FurniturePanelProps) {
     return (
       <div className="cockpit-inspector__stack">
         <div className="section-heading compact">
@@ -446,12 +461,7 @@ export function CockpitInspector() {
     inputRef,
     status,
     surfaceMode,
-  }: {
-    activeStructureName: string
-    inputRef: React.RefObject<HTMLInputElement | null>
-    status: string
-    surfaceMode: typeof draft.surfaceMode
-  }) {
+  }: PreviewExportPanelProps) {
     return (
       <div className="cockpit-inspector__stack">
         <section className="cockpit-inspector__section">

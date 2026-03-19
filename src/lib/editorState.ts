@@ -22,7 +22,7 @@ import {
 import { MAX_CAMERA_ZOOM, MIN_CAMERA_ZOOM } from './camera'
 import { clamp } from './geometry'
 
-const DEFAULT_STATUS = 'Autosaving locally. Use the Data page for JSON import and export.'
+const DEFAULT_STATUS = 'Autosaving locally. Use the Preview / Export tab for JSON import and export.'
 const DEFAULT_CAMERA = {
   zoom: 1,
   offset: { x: 0, y: 0 },
